@@ -44,6 +44,14 @@ class SubmitRequest(BaseModel):
     category: str | None = None
 
 
+class NeedRequest(BaseModel):
+    title: str = Field(min_length=4, max_length=120)
+    description: str | None = Field(default=None, max_length=2000)
+    category: str | None = None
+    budget_usd: float | None = Field(default=None, ge=0)
+    contact: str | None = Field(default=None, max_length=200)
+
+
 def _public_view(row: dict) -> dict:
     return {k: v for k, v in row.items() if k not in _SECRET_FIELDS}
 
@@ -152,6 +160,25 @@ async def get_one(slug: str, request: Request) -> dict:
     if svc is None or svc["status"] != "live":
         raise HTTPException(404, "no live service")
     return _public_view(svc)
+
+
+# --- needs (demand side): buyers/agents post what they want built ---
+
+@router.post("/api/v1/needs")
+async def post_need(req: NeedRequest, request: Request) -> dict:
+    need_id = request.app.state.db.create_need(
+        title=req.title.strip(), description=(req.description or None),
+        category=(req.category or None), budget_usd=req.budget_usd,
+        contact=(req.contact or None),
+    )
+    log.info("need posted: id=%s title=%r", need_id, req.title[:60])
+    return {"status": "open", "need_id": need_id}
+
+
+@router.get("/api/v1/needs")
+async def list_needs(request: Request) -> list[dict]:
+    # contact is intentionally omitted from the public board to curb scraping/spam.
+    return request.app.state.db.list_needs(status="open")
 
 
 async def _mirror_to_directory(settings, service: dict) -> bool:

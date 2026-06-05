@@ -95,6 +95,8 @@ Buyers then point any x402 client at `https://hub.agent-tools.cloud/gw/my-api/..
 | `GET`  | `/api/v1/admin/services` | admin | list all (any status) |
 | `GET`  | `/api/v1/services` | none | list live services (no secrets) |
 | `GET`  | `/api/v1/services/{slug}` | none | one live service (no secrets) |
+| `POST` | `/api/v1/needs` | none | post a demand ("I need an API that…") |
+| `GET`  | `/api/v1/needs` | none | browse open needs (contact hidden) |
 | `ANY`  | `/gw/{slug}/{path}` | x402 | the paywalled reverse proxy |
 | `GET`  | `/healthz` · `/stats` | none | ops |
 

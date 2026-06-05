@@ -89,24 +89,24 @@ _PAGE = """<!doctype html>
   <div class="logo">agent-tools <b>hub</b></div>
   <div class="links">
     <a href="#how">How it works</a>
-    <a href="#sellers">For sellers</a>
-    <a href="#buyers">For buyers</a>
+    <a href="#sellers">List a service</a>
+    <a href="#needs">Post a need</a>
     <a href="__GITHUB__" target="_blank" rel="noopener">GitHub</a>
     <a class="btn" href="#sellers">List your API</a>
   </div>
 </div></nav>
 
 <header class="hero"><div class="wrap">
-  <h1>Turn any API into an<br><span>agent-payable endpoint</span></h1>
-  <p class="lead">Wrap an existing API into a pay-per-call <a href="https://x402.org" target="_blank" rel="noopener">x402</a>
-  endpoint in minutes — no web3 code. Agents pay in USDC per request, and the money lands
-  <b>straight in your wallet</b>.</p>
+  <h1>The marketplace for<br><span>agent-payable APIs</span></h1>
+  <p class="lead">List an existing API as a pay-per-call <a href="https://x402.org" target="_blank" rel="noopener">x402</a>
+  endpoint &mdash; or post what you wish existed. Agents pay in USDC per request, and the money lands
+  <b>straight in the seller's wallet</b>.</p>
   <div class="cta">
-    <a class="btn" href="#sellers">List your API &rarr;</a>
-    <a class="btn ghost" href="#buyers">Browse services</a>
+    <a class="btn" href="#sellers">List a service &rarr;</a>
+    <a class="btn ghost" href="#needs">Post a need &rarr;</a>
   </div>
   <div class="badges">
-    <span class="badge"><b>Free</b> — no platform cut</span>
+    <span class="badge"><b>Free</b> &mdash; no platform cut</span>
     <span class="badge">Pass-through settlement</span>
     <span class="badge">Open source</span>
     <span class="badge">Built on x402</span>
@@ -159,6 +159,23 @@ curl __PUBLIC__/gw/my-api/search?q=hello        <span style="color:#94a3b8"># 40
   <div id="svc"><div class="empty">Loading&hellip;</div></div>
 </div></section>
 
+<section id="needs"><div class="wrap">
+  <h2>Post a need</h2>
+  <p class="sub">Can't find the API you want? Tell builders what you'd pay for. Supply follows demand &mdash;
+  this board surfaces real intent so sellers know what to ship.</p>
+  <pre class="block">curl -X POST __PUBLIC__/api/v1/needs \\
+  -H 'content-type: application/json' \\
+  -d '{
+    "title": "Cheap self-hosted OCR for academic PDFs",
+    "description": "Per-page price target &lt; $0.002, LaTeX output",
+    "category": "document",
+    "budget_usd": 50,
+    "contact": "you@example.com"
+  }'</pre>
+  <h3 style="margin:1.6rem 0 .6rem;font-size:1.05rem">Open needs</h3>
+  <div id="needs-list"><div class="empty">Loading&hellip;</div></div>
+</div></section>
+
 <section><div class="wrap">
   <h2>Why agent-tools hub</h2>
   <p class="sub">Everything proxy402 / MCPay give you, plus directory distribution — and we never touch your money.</p>
@@ -204,19 +221,32 @@ curl __PUBLIC__/gw/my-api/search?q=hello        <span style="color:#94a3b8"># 40
   try {
     const r = await fetch('/stats'); const s = await r.json();
     document.getElementById('stat').innerHTML =
-      '<b>' + (s.live_services||0) + '</b> live services &middot; <b>' + (s.calls_24h||0) + '</b> calls in 24h';
+      '<b>' + (s.live_services||0) + '</b> live services &middot; <b>' + (s.open_needs||0)
+      + '</b> open needs &middot; <b>' + (s.calls_24h||0) + '</b> calls in 24h';
   } catch (e) {}
   try {
     const r = await fetch('/api/v1/services'); const list = await r.json();
     const el = document.getElementById('svc');
-    if (!list.length) { el.innerHTML = '<div class="empty">No live services yet &mdash; be the first.</div>'; return; }
-    el.innerHTML = list.map(s =>
+    if (!list.length) { el.innerHTML = '<div class="empty">No live services yet &mdash; be the first.</div>'; }
+    else el.innerHTML = list.map(s =>
       '<div class="svc"><div><b>' + (s.slug||'') + '</b>'
       + (s.description ? ' &mdash; <span style="color:#64748b">' + s.description + '</span>' : '')
       + '</div><div class="price">$' + (s.price_usdc) + '/call</div></div>'
     ).join('');
   } catch (e) {
     document.getElementById('svc').innerHTML = '<div class="empty">Could not load services.</div>';
+  }
+  try {
+    const r = await fetch('/api/v1/needs'); const list = await r.json();
+    const el = document.getElementById('needs-list');
+    if (!list.length) { el.innerHTML = '<div class="empty">No open needs yet &mdash; post the first.</div>'; }
+    else el.innerHTML = list.map(n =>
+      '<div class="svc"><div><b>' + (n.title||'') + '</b>'
+      + (n.description ? ' &mdash; <span style="color:#64748b">' + n.description + '</span>' : '')
+      + '</div>' + (n.budget_usd!=null ? '<div class="price">~$' + n.budget_usd + '</div>' : '') + '</div>'
+    ).join('');
+  } catch (e) {
+    document.getElementById('needs-list').innerHTML = '<div class="empty">Could not load needs.</div>';
   }
 })();
 </script>

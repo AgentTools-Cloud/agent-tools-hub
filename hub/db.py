@@ -58,6 +58,19 @@ CREATE TABLE IF NOT EXISTS usage_log (
 );
 CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage_log(ts);
 CREATE INDEX IF NOT EXISTS idx_usage_service ON usage_log(service_id);
+
+CREATE TABLE IF NOT EXISTS needs (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at    INTEGER NOT NULL,
+    title         TEXT NOT NULL,
+    description   TEXT,
+    category      TEXT,
+    budget_usd    REAL,
+    contact       TEXT,
+    status        TEXT NOT NULL DEFAULT 'open'   -- open|fulfilled|closed
+);
+CREATE INDEX IF NOT EXISTS idx_needs_created ON needs(created_at);
+CREATE INDEX IF NOT EXISTS idx_needs_status ON needs(status);
 """
 
 
@@ -167,12 +180,41 @@ class DB:
             row = cur.fetchone()
             cur = self._conn.execute("SELECT COUNT(*) AS n FROM services WHERE status='live'")
             live = cur.fetchone()["n"]
+            cur = self._conn.execute("SELECT COUNT(*) AS n FROM needs WHERE status='open'")
+            open_needs = cur.fetchone()["n"]
         return {
             "window_seconds": 86_400,
             "calls_24h": row["calls"],
             "paid_calls_24h": row["paid_calls"],
             "live_services": live,
+            "open_needs": open_needs,
         }
+
+    # --- needs (demand side) ---
+    def create_need(self, *, title: str, description: str | None, category: str | None,
+                    budget_usd: float | None, contact: str | None) -> int:
+        with self._lock:
+            cur = self._conn.execute(
+                "INSERT INTO needs(created_at,title,description,category,budget_usd,contact) "
+                "VALUES (?,?,?,?,?,?)",
+                (int(time.time()), title, description, category, budget_usd, contact),
+            )
+            return int(cur.lastrowid)
+
+    def list_needs(self, status: str = "open", limit: int = 100) -> list[dict]:
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT id,created_at,title,description,category,budget_usd,status "
+                "FROM needs WHERE status=? ORDER BY created_at DESC LIMIT ?",
+                (status, limit),
+            )
+            return cur.fetchall()
+
+    def open_needs_count(self) -> int:
+        with self._lock:
+            cur = self._conn.execute("SELECT COUNT(*) AS n FROM needs WHERE status='open'")
+            return cur.fetchone()["n"]
+
 
     def close(self) -> None:
         with self._lock:
