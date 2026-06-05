@@ -115,6 +115,6 @@ hub/
 
 ## Design
 
-See [A2A经济/hosting-platform/00_design.md](https://agent-tools.cloud) in the
-ops docs: pass-through model, competitor landscape (MCPay / proxy402 / Nevermined
-/ Coinbase Bazaar), and the planned custodial-subscription tier for later.
+Pass-through model, competitor landscape (MCPay / proxy402 / Nevermined /
+Coinbase Bazaar), and the planned custodial-subscription tier for later are
+documented in the private ops notes (`A2A经济/hosting-platform/00_design.md`).

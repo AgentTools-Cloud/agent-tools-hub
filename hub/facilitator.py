@@ -1,8 +1,9 @@
-"""Thin HTTP client for our own x402 facilitator (JoursBleu/facilitator).
+"""Thin HTTP client for an x402 facilitator (verify + settle).
 
 The gateway forwards the buyer's X-PAYMENT payload here for on-chain settle.
 USDC moves from the buyer straight to the seller's payTo — the hub is only the
-coordinator, it never custodies funds.
+coordinator, it never custodies funds. Which facilitator is used is chosen via
+the FACILITATOR preset (x402-org / cdp / self / custom URL); see config.py.
 """
 
 from __future__ import annotations
