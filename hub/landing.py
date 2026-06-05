@@ -7,7 +7,7 @@ from the JSON API. User-supplied text is HTML-escaped in JS to avoid stored XSS.
 from __future__ import annotations
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 router = APIRouter()
 
@@ -92,8 +92,7 @@ nav .links a:not(.btn){display:none}}
 _NAV_ITEMS = [
     ("/", "Home", "home"),
     ("/services", "Services", "services"),
-    ("/needs", "Needs", "needs"),
-    ("/list", "List your API", "list"),
+    ("/requests", "Requests", "requests"),
     ("/about", "How it works", "about"),
 ]
 
@@ -118,12 +117,13 @@ def _shell(active: str, body: str, script: str = "") -> str:
         "<nav><div class=\"wrap\"><div class=\"logo\">agent-tools <b>hub</b></div>"
         "<div class=\"links\">" + links +
         "<a href=\"__GITHUB__\" target=\"_blank\" rel=\"noopener\">GitHub</a>"
-        "<a class=\"btn\" href=\"/list\">List your API</a></div></div></nav>"
+        "<a class=\"btn ghost\" href=\"/list\">List your API</a>"
+        "<a class=\"btn\" href=\"/requests\">Request a Service</a></div></div></nav>"
         + body +
         "<footer><div class=\"wrap\"><div>agent-tools <b>hub</b> · the x402 marketplace · Apache-2.0</div>"
         "<div class=\"flinks\"><a href=\"__GITHUB__\" target=\"_blank\" rel=\"noopener\">GitHub</a>"
         "<a href=\"__DIRECTORY__\" target=\"_blank\" rel=\"noopener\">Directory</a>"
-        "<a href=\"/services\">Services</a><a href=\"/needs\">Needs</a><a href=\"/healthz\">Health</a>"
+        "<a href=\"/services\">Services</a><a href=\"/requests\">Requests</a><a href=\"/healthz\">Health</a>"
         "</div></div></footer>"
         "<script>" + _ESC_JS + script + "</script></body></html>"
     )
@@ -139,7 +139,7 @@ _HOME = """
   existed. Agents pay in USDC per request; the money lands <b>straight in the seller's wallet</b>.</p>
   <div class="cta">
     <a class="btn" href="/list">List a service &rarr;</a>
-    <a class="btn ghost" href="/needs">Post a need &rarr;</a>
+    <a class="btn ghost" href="/requests">Request a service &rarr;</a>
   </div>
   <div class="badges">
     <span class="badge"><b>Free</b> — no platform cut</span>
@@ -155,9 +155,9 @@ _HOME = """
     <a class="tile" href="/list"><h3>I have an API &rarr;</h3>
       <p>Wrap it into a paid x402 endpoint in minutes. No web3 code. Money settles to your wallet.</p>
       <span class="arrow">List a service</span></a>
-    <a class="tile" href="/needs"><h3>I need an API &rarr;</h3>
+    <a class="tile" href="/requests"><h3>I need an API &rarr;</h3>
       <p>Post what you'd pay for. Surface real demand so builders know what to ship.</p>
-      <span class="arrow">Post a need</span></a>
+      <span class="arrow">Request a service</span></a>
   </div>
 </div></section>
 
@@ -204,7 +204,7 @@ fetch('/api/v1/services').then(r=>r.json()).then(list=>{
 
 _NEEDS = """
 <section class="page"><div class="wrap">
-  <h2>Post a need</h2>
+  <h2>Request a service</h2>
   <p class="sub">Can't find the API you want? Tell builders what you'd pay for. Supply follows demand.</p>
 
   <form class="box" id="needForm">
@@ -218,11 +218,11 @@ _NEEDS = """
     </div>
     <label>Contact (kept private, optional)</label>
     <input name="contact" maxlength="200" placeholder="you@example.com — not shown on the public board">
-    <div style="margin-top:1rem"><button class="btn" type="submit">Post need</button></div>
+    <div style="margin-top:1rem"><button class="btn" type="submit">Submit request</button></div>
     <div class="result" id="needResult"></div>
   </form>
 
-  <h2 style="margin-top:2.4rem">Open needs</h2>
+  <h2 style="margin-top:2.4rem">Open requests</h2>
   <div id="needs" class="list"><div class="empty">Loading…</div></div>
 </div></section>
 """
@@ -231,7 +231,7 @@ _NEEDS_JS = """
 function loadNeeds(){
   fetch('/api/v1/needs').then(r=>r.json()).then(list=>{
     var el=document.getElementById('needs');
-    if(!list.length){el.innerHTML='<div class="empty">No open needs yet — post the first.</div>';return;}
+    if(!list.length){el.innerHTML='<div class="empty">No open requests yet — post the first.</div>';return;}
     el.innerHTML=list.map(function(n){return '<div class="item"><div><b>'+esc(n.title)+'</b>'
       +(n.description?' — <span class="muted">'+esc(n.description)+'</span>':'')
       +'</div>'+(n.budget_usd!=null?'<div class="price">~$'+esc(n.budget_usd)+'</div>':'')+'</div>';}).join('');
@@ -248,7 +248,7 @@ document.getElementById('needForm').addEventListener('submit',function(e){
   fetch('/api/v1/needs',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)})
    .then(res=>res.json().then(j=>({ok:res.ok,j:j})))
    .then(function(o){
-     if(o.ok){r.className='result ok';r.textContent='Posted! Your need is now on the board.';f.reset();loadNeeds();}
+     if(o.ok){r.className='result ok';r.textContent='Posted! Your request is now on the board.';f.reset();loadNeeds();}
      else{r.className='result err';r.textContent='Error: '+(o.j.detail||JSON.stringify(o.j));}
    }).catch(()=>{r.className='result err';r.textContent='Network error.';});
 });
@@ -368,9 +368,14 @@ async def services_page(request: Request) -> HTMLResponse:
     return _render("services", _SERVICES, _SERVICES_JS, _public(request))
 
 
-@router.get("/needs", response_class=HTMLResponse)
-async def needs_page(request: Request) -> HTMLResponse:
-    return _render("needs", _NEEDS, _NEEDS_JS, _public(request))
+@router.get("/requests", response_class=HTMLResponse)
+async def requests_page(request: Request) -> HTMLResponse:
+    return _render("requests", _NEEDS, _NEEDS_JS, _public(request))
+
+
+@router.get("/needs")
+async def needs_redirect() -> RedirectResponse:
+    return RedirectResponse(url="/requests", status_code=308)
 
 
 @router.get("/list", response_class=HTMLResponse)
