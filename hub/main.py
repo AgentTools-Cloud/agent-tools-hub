@@ -46,11 +46,11 @@ async def lifespan(app: FastAPI):
     app.state.settings = settings
     app.state.db = DB(settings.db_path)
     app.state.secret_box = SecretBox(settings.fernet_key)
-    app.state.facilitator = FacilitatorClient(settings.facilitator_url)
+    app.state.facilitator = FacilitatorClient(settings.facilitator_url, settings.facilitator_api_key)
     app.state.proxy_client = httpx.AsyncClient(timeout=60.0, follow_redirects=True)
 
-    log.info("agent-tools hub ready -- facilitator=%s network=%s",
-             settings.facilitator_url, settings.network)
+    log.info("agent-tools hub ready -- facilitator=%s (%s) network=%s",
+             settings.facilitator, settings.facilitator_url, settings.resolved_network)
     try:
         yield
     finally:

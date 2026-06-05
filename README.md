@@ -36,8 +36,18 @@ chmod 600 .env
 docker compose up -d               # or: pip install -e . && uvicorn hub.main:app --port 9300
 ```
 
-Set `FACILITATOR_URL` to your facilitator (defaults to
-`https://facilitator.agent-tools.cloud`).
+Set `FACILITATOR` to choose who verifies + settles payments (the hub itself
+never holds funds). It accepts a preset name or a full URL:
+
+| `FACILITATOR` | facilitator | chain | cost |
+|---|---|---|---|
+| `x402-org` *(default)* | Coinbase hosted | Base **Sepolia** testnet | none — no key, no gas. Best for dogfood. |
+| `cdp` | Coinbase CDP | Base mainnet | needs `FACILITATOR_API_KEY` (CDP JWT) |
+| `self` | your own [facilitator](https://github.com/AgentTools-Cloud/facilitator) | Base mainnet | you run it + pay gas |
+| `https://…` | any custom facilitator | set `NETWORK` + `USDC_ADDRESS_BASE` | — |
+
+Each preset auto-selects the matching `NETWORK` and USDC contract (testnet vs
+mainnet USDC differ), so `clone → up` works out of the box on testnet.
 
 ## List a service
 

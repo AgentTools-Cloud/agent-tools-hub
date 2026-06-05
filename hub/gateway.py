@@ -58,7 +58,7 @@ async def gateway(slug: str, path: str, request: Request) -> Response:
     resource_url = f"{settings.public_url.rstrip('/')}/gw/{slug}/{path}"
     requirements = x402.build_requirements(
         service=service, resource_url=resource_url,
-        network=settings.network, usdc_address=settings.usdc_address_base,
+        network=settings.resolved_network, usdc_address=settings.resolved_usdc,
     )
 
     # --- payment gate ---

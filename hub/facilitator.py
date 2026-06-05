@@ -15,9 +15,10 @@ log = logging.getLogger(__name__)
 
 
 class FacilitatorClient:
-    def __init__(self, base_url: str, timeout: float = 30.0):
+    def __init__(self, base_url: str, api_key: str = "", timeout: float = 30.0):
         self._base = base_url.rstrip("/")
-        self._client = httpx.AsyncClient(timeout=timeout)
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
+        self._client = httpx.AsyncClient(timeout=timeout, headers=headers)
 
     async def settle(self, *, payment_payload: dict, payment_requirements: dict) -> dict:
         """POST /settle. Returns the facilitator's SettleResponse dict.
