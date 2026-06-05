@@ -69,6 +69,13 @@ def build_challenge(*, requirements: dict, service: dict, method: str,
     }
 
 
+def encode_challenge_header(challenge: dict) -> str:
+    """x402 v2 carries the challenge in the PAYMENT-REQUIRED response header,
+    base64(JSON). Body is kept human-readable but clients read the header."""
+    return base64.b64encode(json.dumps(challenge).encode("utf-8")).decode("utf-8")
+
+
+
 
 def decode_payment_header(header_value: str) -> dict | None:
     """Decode the base64 X-PAYMENT header into the payment payload dict."""

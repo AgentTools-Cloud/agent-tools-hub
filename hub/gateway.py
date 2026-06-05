@@ -36,7 +36,12 @@ def _challenge_response(*, service: dict, requirements: dict, method: str,
                         resource_url: str, error: str) -> JSONResponse:
     body = x402.build_challenge(requirements=requirements, service=service,
                                 method=method, resource_url=resource_url, error=error)
-    return JSONResponse(status_code=402, content=body)
+    # x402 v2 clients read the challenge from the PAYMENT-REQUIRED header (base64),
+    # not the body. Body stays human-readable for browsers.
+    return JSONResponse(
+        status_code=402, content=body,
+        headers={"PAYMENT-REQUIRED": x402.encode_challenge_header(body)},
+    )
 
 
 @router.api_route(
