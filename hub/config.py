@@ -11,7 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # mainnet USDC differ — using the wrong one breaks settlement).
 FACILITATOR_PRESETS: dict[str, dict] = {
     "x402-org": {
-        "url": "https://x402.org/facilitator",
+        "url": "https://www.x402.org/facilitator",
         "network": "eip155:84532",  # Base Sepolia testnet
         "usdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",  # Base Sepolia USDC
         "needs_key": False,

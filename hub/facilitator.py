@@ -19,7 +19,8 @@ class FacilitatorClient:
     def __init__(self, base_url: str, api_key: str = "", timeout: float = 30.0):
         self._base = base_url.rstrip("/")
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
-        self._client = httpx.AsyncClient(timeout=timeout, headers=headers)
+        # follow_redirects: some facilitators 308 bare-domain -> www on POST.
+        self._client = httpx.AsyncClient(timeout=timeout, headers=headers, follow_redirects=True)
 
     async def settle(self, *, payment_payload: dict, payment_requirements: dict) -> dict:
         """POST /settle. Returns the facilitator's SettleResponse dict.
