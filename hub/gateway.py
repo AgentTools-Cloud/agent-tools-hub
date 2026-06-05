@@ -116,14 +116,14 @@ async def gateway(slug: str, path: str, request: Request) -> Response:
         log.error("upstream proxy error for %s: %s", upstream_url, e)
         db.log_usage(service_id=service["id"], path=path, method=request.method,
                      http_status=502, paid=True, payer=payer,
-                     amount_atomic=requirements["maxAmountRequired"], tx_hash=tx_hash,
+                     amount_atomic=requirements["amount"], tx_hash=tx_hash,
                      latency_ms=int((time.monotonic() - started) * 1000))
         return JSONResponse(status_code=502, content={"error": "upstream unreachable"})
 
     latency_ms = int((time.monotonic() - started) * 1000)
     db.log_usage(service_id=service["id"], path=path, method=request.method,
                  http_status=upstream_resp.status_code, paid=True, payer=payer,
-                 amount_atomic=requirements["maxAmountRequired"], tx_hash=tx_hash,
+                 amount_atomic=requirements["amount"], tx_hash=tx_hash,
                  latency_ms=latency_ms)
 
     resp_headers = {
