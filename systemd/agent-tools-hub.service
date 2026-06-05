@@ -1,0 +1,23 @@
+# agent-tools-hub systemd unit (bare-metal alternative to docker compose).
+#
+#   cp systemd/agent-tools-hub.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now agent-tools-hub
+#
+# Assumes a venv at /opt/agent-tools-hub/.venv and code at /opt/agent-tools-hub.
+
+[Unit]
+Description=agent-tools hub (free x402 hosting gateway)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/agent-tools-hub
+EnvironmentFile=/opt/agent-tools-hub/.env
+ExecStart=/opt/agent-tools-hub/.venv/bin/uvicorn hub.main:app --host 127.0.0.1 --port 9300 --workers 2
+Restart=on-failure
+RestartSec=3
+# .env holds FERNET_KEY + ADMIN_TOKEN; keep it chmod 600 and root-owned.
+
+[Install]
+WantedBy=multi-user.target

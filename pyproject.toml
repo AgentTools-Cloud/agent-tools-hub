@@ -1,0 +1,31 @@
+[project]
+name = "agent-tools-hub"
+version = "0.1.0"
+description = "Free x402 hosting hub — wrap any API into a pay-per-call x402 endpoint. Pass-through, no platform cut."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "agent-tools.cloud" }]
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "httpx>=0.27",
+    "cryptography>=43",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.7"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["hub*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

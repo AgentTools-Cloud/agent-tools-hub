@@ -1,0 +1,16 @@
+services:
+  agent-tools-hub:
+    build: .
+    image: agent-tools/hub:latest
+    container_name: agent-tools-hub
+    restart: unless-stopped
+    network_mode: host
+    env_file: .env
+    volumes:
+      - ./data:/var/lib/agent-tools-hub
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:9300/healthz').status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
