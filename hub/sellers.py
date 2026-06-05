@@ -162,6 +162,19 @@ async def get_one(slug: str, request: Request) -> dict:
     return _public_view(svc)
 
 
+@router.get("/api/v1/services/{slug}/detail")
+async def get_detail(slug: str, request: Request) -> dict:
+    db = request.app.state.db
+    svc = db.service_with_payout(slug)
+    if svc is None or svc["status"] != "live":
+        raise HTTPException(404, "no live service")
+    return {
+        "service": _public_view(svc),
+        "stats": db.service_stats(svc["id"]),
+        "recent_payments": db.recent_payments(svc["id"]),
+    }
+
+
 # --- needs (demand side): buyers/agents post what they want built ---
 
 @router.post("/api/v1/needs")

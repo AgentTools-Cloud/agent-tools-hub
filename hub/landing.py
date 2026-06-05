@@ -6,6 +6,8 @@ from the JSON API. User-supplied text is HTML-escaped in JS to avoid stored XSS.
 
 from __future__ import annotations
 
+import re
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
@@ -69,6 +71,18 @@ font-size:.92rem;color:#334155;margin:1rem 0}
 .item{border:1px solid var(--line);border-radius:9px;padding:.75rem .9rem;display:flex;
 justify-content:space-between;align-items:center;gap:1rem;font-size:.93rem}
 .item .price{color:var(--brand);font-weight:600;white-space:nowrap}
+.item.link{color:inherit}.item.link:hover{border-color:var(--brand);text-decoration:none}
+.dot{display:inline-block;width:.55rem;height:.55rem;border-radius:50%;margin-right:.5rem;vertical-align:middle}
+.dot.ok{background:var(--ok)}.dot.down{background:#dc2626}.dot.unk{background:#cbd5e1}
+.qbadge{display:inline-block;background:var(--soft);border:1px solid var(--line);border-radius:999px;
+font-size:.72rem;font-weight:600;color:var(--muted);padding:.05rem .45rem;margin-left:.45rem}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:.8rem;margin:1rem 0}
+.kpi{border:1px solid var(--line);border-radius:10px;padding:.9rem}
+.kpi .v{font-size:1.4rem;font-weight:700}.kpi .l{font-size:.8rem;color:var(--muted)}
+.tabs{display:flex;gap:.4rem;border-bottom:1px solid var(--line);margin:1.2rem 0 .8rem}
+.tabs button{background:none;border:none;border-bottom:2px solid transparent;padding:.5rem .2rem;
+cursor:pointer;font:inherit;font-size:.92rem;color:var(--muted)}
+.tabs button.on{color:var(--fg);border-bottom-color:var(--brand);font-weight:600}
 .empty{color:var(--muted);font-size:.92rem}
 form.box{border:1px solid var(--line);border-radius:12px;padding:1.3rem;background:#fff;margin-top:1.2rem}
 label{display:block;font-size:.85rem;font-weight:600;margin:.7rem 0 .25rem}
@@ -196,10 +210,70 @@ _SERVICES_JS = """
 fetch('/api/v1/services').then(r=>r.json()).then(list=>{
   var el=document.getElementById('svc');
   if(!list.length){el.innerHTML='<div class="empty">No live services yet — be the first.</div>';return;}
-  el.innerHTML=list.map(function(s){return '<div class="item"><div><b>'+esc(s.slug)+'</b>'
-    +(s.description?' — <span class="muted">'+esc(s.description)+'</span>':'')
-    +'</div><div class="price">$'+esc(s.price_usdc)+'/call</div></div>';}).join('');
+  el.innerHTML=list.map(function(s){
+    var q = (s.quality_score!=null && s.quality_score>0) ? '<span class="qbadge">Q'+esc(s.quality_score)+'</span>' : '';
+    var hd = s.health==='ok' ? '<span class="dot ok"></span>' : (s.health==='down'?'<span class="dot down"></span>':'<span class="dot unk"></span>');
+    return '<a class="item link" href="/services/'+encodeURIComponent(s.slug)+'"><div>'+hd+'<b>'+esc(s.slug)+'</b>'+q
+      +(s.description?' — <span class="muted">'+esc(s.description)+'</span>':'')
+      +'</div><div class="price">$'+esc(s.price_usdc)+'/call</div></a>';}).join('');
 }).catch(()=>{document.getElementById('svc').innerHTML='<div class="empty">Could not load services.</div>';});
+"""
+
+_DETAIL = """
+<section class="page"><div class="wrap">
+  <p style="margin:0 0 .6rem"><a href="/services">&larr; All services</a></p>
+  <div id="dwrap"><div class="empty">Loading…</div></div>
+</div></section>
+"""
+
+# __SLUG__ is replaced per-request with the JS-escaped slug.
+_DETAIL_JS = """
+var SLUG = "__SLUG__";
+var PUBLIC = "__PUBLIC__";
+function fmtTs(t){ if(!t) return '—'; var d=new Date(t*1000); return d.toISOString().slice(0,16).replace('T',' '); }
+fetch('/api/v1/services/'+encodeURIComponent(SLUG)+'/detail').then(function(r){
+  if(!r.ok) throw new Error('not found'); return r.json();
+}).then(function(d){
+  var s=d.service, st=d.stats, pays=d.recent_payments||[];
+  var gw = PUBLIC + '/gw/' + s.slug + '/';
+  var hd = s.health==='ok'?'<span class="dot ok"></span>live':(s.health==='down'?'<span class="dot down"></span>down':'<span class="dot unk"></span>unknown');
+  var q = (s.quality_score!=null)?'<span class="qbadge">Quality '+esc(s.quality_score)+'/100</span>':'';
+  var curlSnippet = 'curl '+gw+'<path>            # 402 + price\\n# x402 client signs USDC, retries with X-PAYMENT -> 200';
+  var html =
+    '<h2 style="margin-bottom:.2rem">'+esc(s.slug)+' '+q+'</h2>'
+    +'<p class="sub">'+(s.description?esc(s.description):'')+'</p>'
+    +'<div class="muted" style="margin-bottom:.4rem">'+hd+' · category: '+esc(s.category||'—')+' · <b class="price">$'+esc(s.price_usdc)+'</b>/call</div>'
+    +'<div class="kpis">'
+      +'<div class="kpi"><div class="v">'+esc(st.paid_total)+'</div><div class="l">paid calls</div></div>'
+      +'<div class="kpi"><div class="v">'+esc(st.paid_24h)+'</div><div class="l">paid · 24h</div></div>'
+      +'<div class="kpi"><div class="v">'+esc(st.calls_total)+'</div><div class="l">total calls</div></div>'
+      +'<div class="kpi"><div class="v">'+fmtTs(st.last_call_ts)+'</div><div class="l">last call</div></div>'
+    +'</div>'
+    +'<div class="tabs"><button class="on" data-t="integrate">Integrate</button>'
+      +'<button data-t="payments">Recent payments</button></div>'
+    +'<div id="tab-integrate">'
+      +'<p class="muted">Gateway URL — any x402 client can call it:</p>'
+      +'<pre class="block">'+esc(gw)+'&lt;path&gt;</pre>'
+      +'<p class="muted">With the x402 fetch/axios wrapper, payment + retry is automatic:</p>'
+      +'<pre class="block">'+esc(curlSnippet)+'</pre>'
+    +'</div>'
+    +'<div id="tab-payments" style="display:none">'
+      +(pays.length? '<div class="list">'+pays.map(function(p){
+          return '<div class="item"><div>'+fmtTs(p.ts)+' · <span class="muted">'+esc(p.method||'')+' /'+esc(p.path||'')+'</span></div>'
+            +'<div class="price">'+(p.tx_hash?'<a target="_blank" rel="noopener" href="https://sepolia.basescan.org/tx/'+esc(p.tx_hash)+'">tx</a>':'—')+'</div></div>';
+        }).join('')+'</div>' : '<div class="empty">No paid calls yet.</div>')
+    +'</div>';
+  var w=document.getElementById('dwrap'); w.innerHTML=html;
+  var tabs=w.querySelectorAll('.tabs button');
+  tabs.forEach(function(b){ b.addEventListener('click',function(){
+    tabs.forEach(function(x){x.classList.remove('on');});
+    b.classList.add('on');
+    document.getElementById('tab-integrate').style.display = b.dataset.t==='integrate'?'':'none';
+    document.getElementById('tab-payments').style.display = b.dataset.t==='payments'?'':'none';
+  });});
+}).catch(function(){
+  document.getElementById('dwrap').innerHTML='<div class="empty">Service not found or not live. <a href="/services">Browse all</a></div>';
+});
 """
 
 _NEEDS = """
@@ -257,34 +331,52 @@ document.getElementById('needForm').addEventListener('submit',function(e){
 _LIST = """
 <section class="page"><div class="wrap">
   <h2>List your API</h2>
-  <p class="sub">Register an existing API as a paid x402 endpoint. Approval flips it live and can mirror it
-  into the <a href="__DIRECTORY__" target="_blank" rel="noopener">agent-tools.cloud</a> directory.</p>
+  <p class="sub">Three steps to turn an existing API into a paid x402 endpoint. No web3 code.</p>
+
+  <div class="tabs" id="wizTabs">
+    <button class="on" data-step="1">1 · Endpoint</button>
+    <button data-step="2">2 · Pricing &amp; payout</button>
+    <button data-step="3">3 · Review</button>
+  </div>
 
   <form class="box" id="listForm">
-    <div class="row">
-      <div><label>Service slug *</label><input name="service_slug" required placeholder="my-api"></div>
-      <div><label>Price per call (USDC) *</label><input name="price_usdc" type="number" step="0.0001" min="0" required placeholder="0.01"></div>
+    <div class="wstep" data-step="1">
+      <label>Service slug *</label>
+      <input name="service_slug" required placeholder="my-api" pattern="[a-z0-9][a-z0-9-]{1,38}[a-z0-9]">
+      <label>Upstream base URL *</label>
+      <input name="upstream_base_url" required placeholder="https://api.example.com">
+      <div class="row">
+        <div><label>Upstream auth header</label><input name="upstream_auth_header" placeholder="Authorization"></div>
+        <div><label>Upstream auth value</label><input name="upstream_auth_value" placeholder="Bearer sk-… (encrypted at rest)"></div>
+      </div>
+      <label>Description</label>
+      <textarea name="description" placeholder="What your API does"></textarea>
+      <div style="margin-top:1rem"><button class="btn" type="button" data-next="2">Next &rarr;</button></div>
     </div>
-    <label>Upstream base URL *</label>
-    <input name="upstream_base_url" required placeholder="https://api.example.com">
-    <div class="row">
-      <div><label>Payout address (Base) *</label><input name="payout_address" required placeholder="0xYourWallet"></div>
-      <div><label>Category</label><input name="category" placeholder="document / search…"></div>
+
+    <div class="wstep" data-step="2" style="display:none">
+      <div class="row">
+        <div><label>Price per call (USDC) *</label><input name="price_usdc" type="number" step="0.0001" min="0" required placeholder="0.01"></div>
+        <div><label>Category</label><input name="category" placeholder="document / search…"></div>
+      </div>
+      <label>Payout address (Base) *</label>
+      <input name="payout_address" required placeholder="0xYourWallet" pattern="0x[a-fA-F0-9]{40}">
+      <div class="note" style="margin-top:.8rem">Payments settle <b>directly to this wallet</b> — the hub never holds funds and takes no cut.</div>
+      <div style="margin-top:1rem"><button class="btn ghost" type="button" data-prev="1">&larr; Back</button>
+        <button class="btn" type="button" data-next="3" style="margin-left:.5rem">Next &rarr;</button></div>
     </div>
-    <div class="row">
-      <div><label>Upstream auth header</label><input name="upstream_auth_header" placeholder="Authorization"></div>
-      <div><label>Upstream auth value</label><input name="upstream_auth_value" placeholder="Bearer sk-… (encrypted at rest)"></div>
+
+    <div class="wstep" data-step="3" style="display:none">
+      <div id="reviewBox" class="note"></div>
+      <div style="margin-top:1rem"><button class="btn ghost" type="button" data-prev="2">&larr; Back</button>
+        <button class="btn" type="submit" style="margin-left:.5rem">Submit for review</button></div>
+      <div class="result" id="listResult"></div>
     </div>
-    <label>Description</label>
-    <textarea name="description" placeholder="What your API does"></textarea>
-    <div style="margin-top:1rem"><button class="btn" type="submit">Submit for review</button></div>
-    <div class="result" id="listResult"></div>
   </form>
 
   <div class="note"><b>Anti-freeload:</b> on submit you get a one-time <code>proxy_secret</code>. Lock your
   upstream to require an <code>X-Hub-Secret</code> header equal to it, so callers can't bypass the paywall
-  by hitting your origin directly. Your upstream key is encrypted at rest and injected on proxy — buyers
-  never see it. After approval, callers use <code>__PUBLIC__/gw/&lt;slug&gt;/&lt;path&gt;</code>.</div>
+  by hitting your origin directly. After approval, callers use <code>__PUBLIC__/gw/&lt;slug&gt;/&lt;path&gt;</code>.</div>
 
   <p class="muted">Prefer the CLI?</p>
   <pre class="block">curl -X POST __PUBLIC__/api/v1/submit -H 'content-type: application/json' -d '{
@@ -294,10 +386,33 @@ _LIST = """
 """
 
 _LIST_JS = """
-document.getElementById('listForm').addEventListener('submit',function(e){
-  e.preventDefault();
-  var f=e.target, r=document.getElementById('listResult');
-  var body={service_slug:f.service_slug.value.trim(),
+(function(){
+  var form=document.getElementById('listForm');
+  var tabs=document.getElementById('wizTabs').querySelectorAll('button');
+  function show(step){
+    form.querySelectorAll('.wstep').forEach(function(s){ s.style.display = s.dataset.step===String(step)?'':'none'; });
+    tabs.forEach(function(b){ b.classList.toggle('on', b.dataset.step===String(step)); });
+    if(String(step)==='3'){
+      var f=form;
+      document.getElementById('reviewBox').innerHTML =
+        '<b>'+esc(f.service_slug.value||'(slug)')+'</b> &rarr; '+esc(f.upstream_base_url.value||'(upstream)')
+        +'<br>Price: <b>$'+esc(f.price_usdc.value||'0')+'</b>/call · Payout: <code>'+esc(f.payout_address.value||'(wallet)')+'</code>';
+    }
+  }
+  function valid(upto){
+    var need=[]; if(upto>=1){need.push('service_slug','upstream_base_url');} if(upto>=2){need.push('price_usdc','payout_address');}
+    for(var i=0;i<need.length;i++){var el=form[need[i]]; if(!el.value.trim()||!el.checkValidity()){el.reportValidity();return false;}}
+    return true;
+  }
+  form.querySelectorAll('[data-next]').forEach(function(b){ b.addEventListener('click',function(){ var n=+b.dataset.next; if(valid(n-1)) show(n); }); });
+  form.querySelectorAll('[data-prev]').forEach(function(b){ b.addEventListener('click',function(){ show(+b.dataset.prev); }); });
+  tabs.forEach(function(b){ b.addEventListener('click',function(){ show(+b.dataset.step); }); });
+
+  form.addEventListener('submit',function(e){
+    e.preventDefault();
+    if(!valid(2)){ show(2); return; }
+    var f=e.target, r=document.getElementById('listResult');
+    var body={service_slug:f.service_slug.value.trim(),
     price_usdc:parseFloat(f.price_usdc.value),
     upstream_base_url:f.upstream_base_url.value.trim(),
     payout_address:f.payout_address.value.trim(),
@@ -310,10 +425,11 @@ document.getElementById('listForm').addEventListener('submit',function(e){
    .then(function(o){
      if(o.ok){r.className='result ok';
        r.innerHTML='Submitted &amp; pending review. <b>Save your proxy_secret now</b> (shown once): <code>'
-       +esc(o.j.proxy_secret)+'</code>';f.reset();}
+       +esc(o.j.proxy_secret)+'</code>';f.reset();show(1);}
      else{r.className='result err';r.textContent='Error: '+(o.j.detail||JSON.stringify(o.j));}
    }).catch(()=>{r.className='result err';r.textContent='Network error.';});
-});
+  });
+})();
 """
 
 _ABOUT = """
@@ -366,6 +482,14 @@ async def home(request: Request) -> HTMLResponse:
 @router.get("/services", response_class=HTMLResponse)
 async def services_page(request: Request) -> HTMLResponse:
     return _render("services", _SERVICES, _SERVICES_JS, _public(request))
+
+
+@router.get("/services/{slug}", response_class=HTMLResponse)
+async def service_detail_page(slug: str, request: Request) -> HTMLResponse:
+    # slug is echoed into a JS string literal; allow only safe chars to prevent injection.
+    safe = re.sub(r"[^a-zA-Z0-9_-]", "", slug)[:48]
+    script = _DETAIL_JS.replace("__SLUG__", safe)
+    return _render("services", _DETAIL, script, _public(request))
 
 
 @router.get("/requests", response_class=HTMLResponse)

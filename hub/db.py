@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS services (
     category            TEXT,
     health              TEXT DEFAULT 'unknown',
     created_at          INTEGER NOT NULL,
-    status              TEXT NOT NULL DEFAULT 'pending'   -- pending|live|paused|rejected
+    status              TEXT NOT NULL DEFAULT 'pending',  -- pending|live|paused|rejected
+    quality_score       INTEGER NOT NULL DEFAULT 0        -- 0-100, like MCPay moderation score
 );
 CREATE INDEX IF NOT EXISTS idx_services_slug ON services(slug);
 CREATE INDEX IF NOT EXISTS idx_services_status ON services(status);
@@ -86,6 +87,16 @@ class DB:
         self._conn = sqlite3.connect(str(p), check_same_thread=False, isolation_level=None)
         self._conn.row_factory = _row_to_dict
         self._conn.executescript(_SCHEMA)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        """Additive migrations for DBs created before a column existed."""
+        with self._lock:
+            cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(services)")}
+            if "quality_score" not in cols:
+                self._conn.execute(
+                    "ALTER TABLE services ADD COLUMN quality_score INTEGER NOT NULL DEFAULT 0"
+                )
 
     # --- sellers ---
     def create_seller(self, *, slug: str, name: str | None, contact_email: str | None,
@@ -132,6 +143,11 @@ class DB:
         with self._lock:
             self._conn.execute("UPDATE services SET health=? WHERE slug=?", (health, slug))
 
+    def set_quality_score(self, slug: str, score: int) -> None:
+        score = max(0, min(100, int(score)))
+        with self._lock:
+            self._conn.execute("UPDATE services SET quality_score=? WHERE slug=?", (score, slug))
+
     def list_services(self, status: str | None = None) -> list[dict]:
         with self._lock:
             if status:
@@ -156,6 +172,37 @@ class DB:
                 (slug,),
             )
             return cur.fetchone()
+
+    def service_stats(self, service_id: int) -> dict:
+        """Per-service usage stats for the detail page."""
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT COUNT(*) AS calls, COALESCE(SUM(paid),0) AS paid_calls, "
+                "MAX(ts) AS last_ts FROM usage_log WHERE service_id=?",
+                (service_id,),
+            )
+            row = cur.fetchone()
+            cur = self._conn.execute(
+                "SELECT COUNT(*) AS c FROM usage_log WHERE service_id=? AND paid=1 AND ts>=?",
+                (service_id, int(time.time()) - 86_400),
+            )
+            paid_24h = cur.fetchone()["c"]
+        return {
+            "calls_total": row["calls"] or 0,
+            "paid_total": row["paid_calls"] or 0,
+            "paid_24h": paid_24h,
+            "last_call_ts": row["last_ts"],
+        }
+
+    def recent_payments(self, service_id: int, limit: int = 8) -> list[dict]:
+        """Most recent paid calls (no payer PII beyond the on-chain address)."""
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT ts, path, method, http_status, amount_atomic, tx_hash "
+                "FROM usage_log WHERE service_id=? AND paid=1 ORDER BY ts DESC LIMIT ?",
+                (service_id, limit),
+            )
+            return cur.fetchall()
 
     # --- usage ---
     def log_usage(self, *, service_id: int, path: str, method: str, http_status: int,
