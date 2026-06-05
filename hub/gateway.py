@@ -33,9 +33,9 @@ _STRIP_INBOUND = {"x-payment", "authorization", "x-hub-secret"}
 
 
 def _challenge_response(*, service: dict, requirements: dict, method: str,
-                        error: str) -> JSONResponse:
+                        resource_url: str, error: str) -> JSONResponse:
     body = x402.build_challenge(requirements=requirements, service=service,
-                                method=method, error=error)
+                                method=method, resource_url=resource_url, error=error)
     return JSONResponse(status_code=402, content=body)
 
 
@@ -67,17 +67,20 @@ async def gateway(slug: str, path: str, request: Request) -> Response:
     pay_header = request.headers.get("x-payment")
     if not pay_header:
         return _challenge_response(service=service, requirements=requirements,
-                                   method=request.method, error="X-PAYMENT header is required")
+                                   method=request.method, resource_url=resource_url,
+                                   error="X-PAYMENT header is required")
 
     payload = x402.decode_payment_header(pay_header)
     if payload is None:
         return _challenge_response(service=service, requirements=requirements,
-                                   method=request.method, error="malformed X-PAYMENT header")
+                                   method=request.method, resource_url=resource_url,
+                                   error="malformed X-PAYMENT header")
 
     settle = await facilitator.settle(payment_payload=payload, payment_requirements=requirements)
     if not settle.get("success"):
         return _challenge_response(
             service=service, requirements=requirements, method=request.method,
+            resource_url=resource_url,
             error=f"payment not settled: {settle.get('errorReason') or 'unknown'}",
         )
     payer = settle.get("payer")
