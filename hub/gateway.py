@@ -53,17 +53,20 @@ async def gateway(slug: str, path: str, request: Request) -> Response:
     settings = app.state.settings
     db = app.state.db
     box = app.state.secret_box
-    facilitator = app.state.facilitator
     proxy: httpx.AsyncClient = app.state.proxy_client
 
     service = db.service_with_payout(slug)
     if service is None or service["status"] != "live":
         return JSONResponse(status_code=404, content={"error": f"no live service '{slug}'"})
 
+    pool = app.state.facilitator_pool
+    backend = pool.resolved_backend(service["facilitator"] if "facilitator" in service.keys() else None)
+    net, usdc = pool.settlement(backend, service["payout_network"])
+    facilitator = pool.client(backend)
     resource_url = f"{settings.public_url.rstrip('/')}/gw/{slug}/{path}"
     requirements = x402.build_requirements(
         service=service, resource_url=resource_url,
-        network=settings.resolved_network, usdc_address=settings.resolved_usdc,
+        network=net, usdc_address=usdc,
     )
 
     # --- payment gate ---

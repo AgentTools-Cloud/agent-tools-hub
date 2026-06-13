@@ -11,6 +11,8 @@ import re
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from .config import SELECTABLE_FACILITATORS, facilitator_public, get_settings
+
 router = APIRouter()
 
 GITHUB = "https://github.com/AgentTools-Cloud/agent-tools-hub"
@@ -45,7 +47,7 @@ background-clip:text;color:transparent}
 .hero p.lead{font-size:1.16rem;color:var(--muted);max-width:42rem;margin:0 auto 1.5rem}
 .cta{display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap}
 .badges{display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap;margin-top:1.5rem}
-.badge{font-size:.82rem;color:var(--muted);background:var(--soft);border:1px solid var(--line);
+select{width:100%;padding:.6rem .7rem;border:1px solid var(--line);border-radius:8px;background:#fff;font:inherit;margin-top:.3rem}table.kv{width:100%;border-collapse:collapse;margin:.6rem 0;font-size:.86rem}table.kv td{padding:.25rem .4rem;border-top:1px solid var(--line);vertical-align:top}table.kv td:first-child{color:var(--muted);white-space:nowrap;width:6.5rem}.badge{font-size:.82rem;color:var(--muted);background:var(--soft);border:1px solid var(--line);
 padding:.3rem .7rem;border-radius:999px}.badge b{color:var(--ok)}
 .stat{margin-top:1.3rem;font-size:.9rem;color:var(--muted)}.stat b{color:var(--fg)}
 .page{padding:2.6rem 0}
@@ -106,6 +108,7 @@ nav .links a:not(.btn){display:none}}
 _NAV_ITEMS = [
     ("/", "Home", "home"),
     ("/services", "Services", "services"),
+    ("/backends", "Payment backends", "backends"),
     ("/requests", "Requests", "requests"),
     ("/about", "How it works", "about"),
 ]
@@ -362,6 +365,10 @@ _LIST = """
       <label>Payout address (Base) *</label>
       <input name="payout_address" required placeholder="0xYourWallet" pattern="0x[a-fA-F0-9]{40}">
       <div class="note" style="margin-top:.8rem">Payments settle <b>directly to this wallet</b> — the hub never holds funds and takes no cut.</div>
+      <label style="margin-top:.9rem">Payment backend (x402 facilitator)</label>
+      <select name="facilitator" id="facSelect"></select>
+      <div class="note" id="facNote" style="margin-top:.5rem"></div>
+      <div class="muted" style="margin-top:.3rem">Pick which settlement backend handles your payments — <a href="/backends" target="_blank">compare terms &rarr;</a>. Defaults to PayAI.</div>
       <div style="margin-top:1rem"><button class="btn ghost" type="button" data-prev="1">&larr; Back</button>
         <button class="btn" type="button" data-next="3" style="margin-left:.5rem">Next &rarr;</button></div>
     </div>
@@ -389,6 +396,16 @@ _LIST_JS = """
 (function(){
   var form=document.getElementById('listForm');
   var tabs=document.getElementById('wizTabs').querySelectorAll('button');
+  var FACS={};
+  fetch('/api/v1/facilitators').then(function(r){return r.json();}).then(function(d){
+    var sel=document.getElementById('facSelect'); if(!sel) return;
+    (d.facilitators||[]).forEach(function(f){ FACS[f.id]=f;
+      var o=document.createElement('option'); o.value=f.id;
+      o.textContent=f.label+(f.testnet?' (testnet)':'')+' — '+(f.free_tier||'');
+      if(f.id===d.default) o.selected=true; sel.appendChild(o); });
+    function note(){ var f=FACS[sel.value]; if(f) document.getElementById('facNote').innerHTML=esc(f.terms||''); }
+    sel.addEventListener('change', note); note();
+  }).catch(function(){});
   function show(step){
     form.querySelectorAll('.wstep').forEach(function(s){ s.style.display = s.dataset.step===String(step)?'':'none'; });
     tabs.forEach(function(b){ b.classList.toggle('on', b.dataset.step===String(step)); });
@@ -416,6 +433,7 @@ _LIST_JS = """
     price_usdc:parseFloat(f.price_usdc.value),
     upstream_base_url:f.upstream_base_url.value.trim(),
     payout_address:f.payout_address.value.trim(),
+    facilitator:(f.facilitator&&f.facilitator.value)||null,
     category:f.category.value.trim()||null,
     upstream_auth_header:f.upstream_auth_header.value.trim()||null,
     upstream_auth_value:f.upstream_auth_value.value.trim()||null,
@@ -505,6 +523,47 @@ async def needs_redirect() -> RedirectResponse:
 @router.get("/list", response_class=HTMLResponse)
 async def list_page(request: Request) -> HTMLResponse:
     return _render("list", _LIST, _LIST_JS, _public(request))
+
+
+@router.get("/backends", response_class=HTMLResponse)
+async def backends_page(request: Request) -> HTMLResponse:
+    default = get_settings().facilitator
+    cards = []
+    for n in SELECTABLE_FACILITATORS:
+        f = facilitator_public(n)
+        if not f:
+            continue
+        badges = []
+        if f["id"] == default:
+            badges.append('<span class="badge"><b>Default</b></span>')
+        badges.append('<span class="badge">%s</span>' % ("Testnet" if f["testnet"] else "Mainnet"))
+        badges.append('<span class="badge">%s</span>' % ("Needs API key" if f["needs_key"] else "No key"))
+        nets = ", ".join(x.split(":")[-1][:10] for x in (f.get("networks") or []))
+        cards.append(
+            '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem">'
+            '<h3 style="margin:0">%s</h3><div>%s</div></div>'
+            '<p>%s</p>'
+            '<table class="kv"><tr><td>Free tier</td><td>%s</td></tr>'
+            '<tr><td>Gas</td><td>%s</td></tr><tr><td>Networks</td><td class="mono">%s</td></tr></table>'
+            '<a class="btn ghost" href="%s" target="_blank" rel="noopener">Terms &rarr;</a></div>'
+            % (f["label"], "".join(badges), _esc_py(f.get("terms") or ""),
+               _esc_py(f.get("free_tier") or "—"), _esc_py(f.get("gas") or "—"),
+               nets, f.get("homepage") or "#"))
+    body = (
+        '<section class="page"><div class="wrap">'
+        '<h2>Payment backends</h2>'
+        '<p class="sub">Every hosted service settles through an x402 <b>facilitator</b>. '
+        'Pick the one whose terms you like when you list — we pass payments straight through, '
+        'the hub never holds funds. All listed backends are mainnet, no-auth and sponsor gas.</p>'
+        '<div class="grid3">' + "".join(cards) + '</div>'
+        '<p class="muted" style="margin-top:1.4rem">More backends are added over time. '
+        'Want one listed? <a href="/requests">Tell us &rarr;</a></p>'
+        '</div></section>')
+    return _render("backends", body, "", _public(request))
+
+
+def _esc_py(s: str) -> str:
+    return (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
 
 @router.get("/about", response_class=HTMLResponse)

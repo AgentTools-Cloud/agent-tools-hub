@@ -23,6 +23,9 @@ from pydantic import BaseModel, Field
 log = logging.getLogger(__name__)
 router = APIRouter()
 
+from .config import (FACILITATOR_PRESETS, SELECTABLE_FACILITATORS,
+                     facilitator_public, get_settings)
+
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$")
 _ADDR_RE = re.compile(r"^0x[a-fA-F0-9]{40}$")
 
@@ -36,6 +39,7 @@ class SubmitRequest(BaseModel):
     contact_email: str | None = None
     payout_address: str
     payout_network: str = "eip155:8453"
+    facilitator: str | None = None  # backend id; defaults to hub default (payai)
     upstream_base_url: str
     upstream_auth_header: str | None = None
     upstream_auth_value: str | None = None  # plaintext; encrypted before storage
@@ -71,6 +75,10 @@ async def submit(req: SubmitRequest, request: Request) -> dict:
         raise HTTPException(422, "slug must be lowercase alphanumeric/hyphen, 3-40 chars")
     if not _ADDR_RE.match(req.payout_address):
         raise HTTPException(422, "payout_address must be a 0x EVM address")
+    fac = (req.facilitator or get_settings().facilitator).strip()
+    if fac not in FACILITATOR_PRESETS:
+        raise HTTPException(
+            422, f"unknown facilitator '{fac}'; pick one of {SELECTABLE_FACILITATORS}")
     if not req.upstream_base_url.startswith(("http://", "https://")):
         raise HTTPException(422, "upstream_base_url must be http(s)")
     if db.get_service(req.service_slug) is not None:
@@ -88,11 +96,13 @@ async def submit(req: SubmitRequest, request: Request) -> dict:
         seller_id=seller_id, slug=req.service_slug, upstream_base_url=req.upstream_base_url,
         upstream_auth_header=req.upstream_auth_header, upstream_auth_enc=enc,
         price_usdc=req.price_usdc, description=req.description, category=req.category,
+        facilitator=fac,
     )
     log.info("submit: service=%s id=%s status=pending", req.service_slug, service_id)
     return {
         "status": "pending",
         "service_slug": req.service_slug,
+        "facilitator": facilitator_public(fac),
         "proxy_secret": proxy_secret,  # shown ONCE so seller can verify X-Hub-Secret upstream
         "next_steps": [
             "Lock your upstream to only accept requests carrying X-Hub-Secret = proxy_secret.",
@@ -147,6 +157,14 @@ async def admin_list(request: Request, authorization: str | None = Header(defaul
     settings = request.app.state.settings
     _require_admin(authorization, settings)
     return [_public_view(s) for s in request.app.state.db.list_services()]
+
+
+@router.get("/api/v1/facilitators")
+async def list_facilitators() -> dict:
+    """Public list of payment backends a seller can pick, with their terms."""
+    items = [facilitator_public(n) for n in SELECTABLE_FACILITATORS]
+    return {"default": get_settings().facilitator,
+            "facilitators": [i for i in items if i]}
 
 
 @router.get("/api/v1/services")

@@ -97,6 +97,11 @@ class DB:
                 self._conn.execute(
                     "ALTER TABLE services ADD COLUMN quality_score INTEGER NOT NULL DEFAULT 0"
                 )
+            if "facilitator" not in cols:
+                # which x402 facilitator backend settles this service's payments
+                self._conn.execute(
+                    "ALTER TABLE services ADD COLUMN facilitator TEXT NOT NULL DEFAULT ''"
+                )
 
     # --- sellers ---
     def create_seller(self, *, slug: str, name: str | None, contact_email: str | None,
@@ -118,15 +123,16 @@ class DB:
     def create_service(self, *, seller_id: int, slug: str, upstream_base_url: str,
                        upstream_auth_header: str | None, upstream_auth_enc: str | None,
                        price_usdc: float, description: str | None,
-                       category: str | None) -> tuple[int, str]:
+                       category: str | None, facilitator: str = "") -> tuple[int, str]:
         proxy_secret = secrets.token_urlsafe(24)
         with self._lock:
             cur = self._conn.execute(
                 "INSERT INTO services(seller_id,slug,upstream_base_url,upstream_auth_header,"
-                "upstream_auth_enc,proxy_secret,price_usdc,description,category,created_at,status) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,'pending')",
+                "upstream_auth_enc,proxy_secret,price_usdc,description,category,facilitator,"
+                "created_at,status) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending')",
                 (seller_id, slug, upstream_base_url, upstream_auth_header, upstream_auth_enc,
-                 proxy_secret, price_usdc, description, category, int(time.time())),
+                 proxy_secret, price_usdc, description, category, facilitator, int(time.time())),
             )
             return int(cur.lastrowid), proxy_secret
 

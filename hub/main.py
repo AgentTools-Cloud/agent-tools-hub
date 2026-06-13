@@ -12,7 +12,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from .config import get_settings
 from .crypto import SecretBox
 from .db import DB
-from .facilitator import FacilitatorClient
+from .facilitator import FacilitatorClient, FacilitatorPool
 from .gateway import router as gateway_router
 from .landing import router as landing_router
 from .sellers import router as sellers_router
@@ -47,6 +47,7 @@ async def lifespan(app: FastAPI):
     app.state.db = DB(settings.db_path)
     app.state.secret_box = SecretBox(settings.fernet_key)
     app.state.facilitator = FacilitatorClient(settings.facilitator_url, settings.facilitator_api_key)
+    app.state.facilitator_pool = FacilitatorPool(settings)
     app.state.proxy_client = httpx.AsyncClient(timeout=60.0, follow_redirects=True)
 
     log.info("agent-tools hub ready -- facilitator=%s (%s) network=%s",
@@ -55,6 +56,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         await app.state.facilitator.aclose()
+        await app.state.facilitator_pool.aclose()
         await app.state.proxy_client.aclose()
         app.state.db.close()
 

@@ -57,3 +57,54 @@ class FacilitatorClient:
 
     async def aclose(self) -> None:
         await self._client.aclose()
+
+
+class FacilitatorPool:
+    """Lazily builds + caches one FacilitatorClient per backend id, and resolves
+    each backend's settlement network + USDC asset from its preset. Lets every
+    hosted service settle through the facilitator its seller chose.
+
+    The seller may pin a settlement network (payout_network); we honour it only
+    when the chosen backend actually supports it, else fall back to the backend
+    default — a wrong network silently breaks settlement.
+    """
+
+    def __init__(self, settings):
+        from .config import FACILITATOR_PRESETS
+        self._presets = FACILITATOR_PRESETS
+        self._settings = settings
+        self._clients: dict[str, FacilitatorClient] = {}
+
+    def _preset(self, backend: str) -> dict:
+        p = self._presets.get(backend)
+        if not p:  # unknown -> hub default
+            p = self._presets[self._settings.facilitator]
+        return p
+
+    def client(self, backend: str) -> FacilitatorClient:
+        p = self._preset(backend)
+        url = p["url"].rstrip("/")
+        if url not in self._clients:
+            key = self._settings.facilitator_api_key if p.get("needs_key") else ""
+            self._clients[url] = FacilitatorClient(url, key)
+        return self._clients[url]
+
+    def settlement(self, backend: str, payout_network: str | None) -> tuple[str, str]:
+        """Return (network, usdc_address) for this service's settlement."""
+        p = self._preset(backend)
+        net = p["network"]
+        pn = (payout_network or "").strip()
+        if pn and pn in (p.get("networks") or [p["network"]]):
+            net = pn
+        # USDC asset is network-specific; preset only carries its default
+        # network's asset, so only trust it when the network matches.
+        usdc = p["usdc"] if net == p["network"] else p["usdc"]
+        return net, usdc
+
+    def resolved_backend(self, service_backend: str | None) -> str:
+        b = (service_backend or "").strip()
+        return b if b in self._presets else self._settings.facilitator
+
+    async def aclose(self) -> None:
+        for c in self._clients.values():
+            await c.aclose()
