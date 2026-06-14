@@ -20,7 +20,12 @@ from fastapi.responses import JSONResponse, Response
 
 import json as _json
 
-from . import x402
+from . import safety, x402
+
+# Caps on what flows through the hop. A seller's own limits are their business;
+# what passes through us stays bounded so one upstream can't exhaust the hub.
+_MAX_REQUEST_BODY = 10 * 1024 * 1024    # 10 MiB inbound body
+_MAX_RESPONSE_BODY = 25 * 1024 * 1024   # 25 MiB upstream response
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -103,6 +108,9 @@ async def gateway(slug: str, path: str, request: Request) -> Response:
     # Read the body once; we need it both to detect free MCP handshakes and to
     # forward it upstream.
     body = await request.body()
+    if len(body) > _MAX_REQUEST_BODY:
+        return JSONResponse(status_code=413,
+                            content={"error": "request body too large"})
 
     # --- MCP-aware free pass: handshake / list methods are not billable. A
     # hosted MCP server must answer initialize + tools/list before any client
@@ -170,6 +178,17 @@ async def _proxy_upstream(*, proxy, box, db, service, path, request, body,
             fwd_headers[auth_header] = secret_val
     fwd_headers["X-Hub-Secret"] = service["proxy_secret"]
 
+    # Re-check SSRF at call time: DNS for the upstream host may have changed
+    # since registration (rebinding). Refuse if it now points internal.
+    _reason = safety.upstream_host_reason(upstream_url)
+    if _reason:
+        log.warning("blocked upstream %s: %s", upstream_url, _reason)
+        db.log_usage(service_id=service["id"], path=path, method=request.method,
+                     http_status=502, paid=paid, payer=payer,
+                     amount_atomic=amount_atomic, tx_hash=tx_hash,
+                     latency_ms=int((time.monotonic() - started) * 1000))
+        return JSONResponse(status_code=502, content={"error": "upstream blocked"})
+
     try:
         upstream_resp = await proxy.request(
             request.method, upstream_url,
@@ -183,6 +202,16 @@ async def _proxy_upstream(*, proxy, box, db, service, path, request, body,
                      latency_ms=int((time.monotonic() - started) * 1000))
         return JSONResponse(status_code=502, content={"error": "upstream unreachable"})
 
+    # Cap the relayed response so one upstream can't blow up hub memory.
+    content = upstream_resp.content
+    if len(content) > _MAX_RESPONSE_BODY:
+        log.warning("upstream %s response too large: %d bytes", upstream_url, len(content))
+        db.log_usage(service_id=service["id"], path=path, method=request.method,
+                     http_status=502, paid=paid, payer=payer,
+                     amount_atomic=amount_atomic, tx_hash=tx_hash,
+                     latency_ms=int((time.monotonic() - started) * 1000))
+        return JSONResponse(status_code=502, content={"error": "upstream response too large"})
+
     latency_ms = int((time.monotonic() - started) * 1000)
     db.log_usage(service_id=service["id"], path=path, method=request.method,
                  http_status=upstream_resp.status_code, paid=paid, payer=payer,
@@ -195,5 +224,5 @@ async def _proxy_upstream(*, proxy, box, db, service, path, request, body,
     }
     if tx_hash:
         resp_headers["X-Payment-Tx"] = tx_hash
-    return Response(content=upstream_resp.content, status_code=upstream_resp.status_code,
+    return Response(content=content, status_code=upstream_resp.status_code,
                     headers=resp_headers, media_type=upstream_resp.headers.get("content-type"))

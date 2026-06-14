@@ -48,7 +48,13 @@ async def lifespan(app: FastAPI):
     app.state.secret_box = SecretBox(settings.fernet_key)
     app.state.facilitator = FacilitatorClient(settings.facilitator_url, settings.facilitator_api_key)
     app.state.facilitator_pool = FacilitatorPool(settings)
-    app.state.proxy_client = httpx.AsyncClient(timeout=60.0, follow_redirects=True)
+    # follow_redirects=False: a 3xx from a seller upstream must NOT be chased
+    # by us (a redirect to 169.254.169.254 / an internal host would bypass the
+    # submit-time SSRF check). We relay the 3xx back to the caller instead.
+    app.state.proxy_client = httpx.AsyncClient(
+        timeout=httpx.Timeout(connect=8.0, read=30.0, write=15.0, pool=8.0),
+        follow_redirects=False,
+        limits=httpx.Limits(max_connections=100, max_keepalive_connections=20))
 
     log.info("agent-tools hub ready -- facilitator=%s (%s) network=%s",
              settings.facilitator, settings.facilitator_url, settings.resolved_network)
