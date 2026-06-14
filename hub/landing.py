@@ -333,8 +333,12 @@ document.getElementById('needForm').addEventListener('submit',function(e){
 
 _LIST = """
 <section class="page"><div class="wrap">
-  <h2>List your API</h2>
-  <p class="sub">Three steps to turn an existing API into a paid x402 endpoint. No web3 code.</p>
+  <h2>One-click x402: wrap your API, MCP or A2A</h2>
+  <p class="sub">Three steps to turn an existing endpoint into a paid x402 endpoint. No web3 code.</p>
+  <div class="note" style="margin:0 0 1.2rem"><b>We\'re a connect/relay service.</b> You keep your API where it is;
+  we put an x402 paywall in front and route payments to a facilitator <b>you pick</b> — its free tier, gas and fees
+  are <b>the facilitator\'s policy</b>, <a href="/backends">compare backends &rarr;</a>. Money settles
+  <b>straight to your wallet</b>; we never hold funds and take no cut.</div>
 
   <div class="tabs" id="wizTabs">
     <button class="on" data-step="1">1 · Endpoint</button>
@@ -368,7 +372,7 @@ _LIST = """
       <label style="margin-top:.9rem">Payment backend (x402 facilitator)</label>
       <select name="facilitator" id="facSelect"></select>
       <div class="note" id="facNote" style="margin-top:.5rem"></div>
-      <div class="muted" style="margin-top:.3rem">Pick which settlement backend handles your payments — <a href="/backends" target="_blank">compare terms &rarr;</a>. Defaults to PayAI.</div>
+      <div class="muted" style="margin-top:.3rem">Pick which third-party facilitator settles your payments. Free tier / gas / fees are <b>that facilitator\'s policy</b> — <a href="/backends" target="_blank">compare &rarr;</a>. Defaults to PayAI.</div>
       <div style="margin-top:1rem"><button class="btn ghost" type="button" data-prev="1">&larr; Back</button>
         <button class="btn" type="button" data-next="3" style="margin-left:.5rem">Next &rarr;</button></div>
     </div>
@@ -545,16 +549,20 @@ async def backends_page(request: Request) -> HTMLResponse:
             '<p>%s</p>'
             '<table class="kv"><tr><td>Free tier</td><td>%s</td></tr>'
             '<tr><td>Gas</td><td>%s</td></tr><tr><td>Networks</td><td class="mono">%s</td></tr></table>'
-            '<a class="btn ghost" href="%s" target="_blank" rel="noopener">Terms &rarr;</a></div>'
+            '<div class="muted" style="font-size:.78rem;margin:.3rem 0 .6rem">Terms set by %s, not by us.</div>'
+            '<a class="btn ghost" href="%s" target="_blank" rel="noopener">%s\'s terms &rarr;</a></div>'
             % (f["label"], "".join(badges), _esc_py(f.get("terms") or ""),
                _esc_py(f.get("free_tier") or "—"), _esc_py(f.get("gas") or "—"),
-               nets, f.get("homepage") or "#"))
+               nets, _esc_py(f["label"]), f.get("homepage") or "#", _esc_py(f["label"])))
     body = (
         '<section class="page"><div class="wrap">'
         '<h2>Payment backends</h2>'
-        '<p class="sub">Every hosted service settles through an x402 <b>facilitator</b>. '
-        'Pick the one whose terms you like when you list — we pass payments straight through, '
-        'the hub never holds funds. All listed backends are mainnet, no-auth and sponsor gas.</p>'
+        '<div class="note" style="margin-bottom:1rem"><b>We provide the connection, not the settlement.</b> '
+        'agent-tools hub wraps your API into an x402 endpoint and routes each payment to a third-party '
+        '<b>facilitator</b> you choose. <b>The free tiers, gas coverage and per-transaction fees below are '
+        'each facilitator\'s own policy</b> (pulled from their docs) — not ours. We never hold funds and take no cut.</div>'
+        '<p class="sub">Pick the backend whose terms suit you when you list a service. '
+        'All backends below are mainnet, need no account/key, and the facilitator sponsors gas.</p>'
         '<div class="grid3">' + "".join(cards) + '</div>'
         '<p class="muted" style="margin-top:1.4rem">More backends are added over time. '
         'Want one listed? <a href="/requests">Tell us &rarr;</a></p>'
