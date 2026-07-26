@@ -19,90 +19,65 @@ GITHUB = "https://github.com/AgentTools-Cloud/agent-tools-hub"
 DIRECTORY = "https://agent-tools.cloud"
 
 _CSS = """
-:root{--bg:#fff;--fg:#0f172a;--muted:#64748b;--line:#e2e8f0;--brand:#4f46e5;
---brand2:#7c3aed;--soft:#f8fafc;--code:#0b1020;--ok:#16a34a}
+:root{--bg:#f6f4ed;--paper:#fffdfa;--fg:#141826;--muted:#667085;--line:#ddd6c8;
+--brand:#0f766e;--brand2:#c2410c;--soft:#ece7dc;--code:#111827;--ok:#15803d;
+--shadow:0 18px 50px rgba(42,36,24,.08);--radius:10px}
 *{box-sizing:border-box}
-body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-color:var(--fg);background:var(--bg);line-height:1.6;-webkit-font-smoothing:antialiased}
-a{color:var(--brand);text-decoration:none}a:hover{text-decoration:underline}
-.wrap{max-width:64rem;margin:0 auto;padding:0 1.25rem}
-code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-code{background:var(--soft);padding:.12rem .4rem;border-radius:4px;font-size:.9em}
-nav{position:sticky;top:0;background:rgba(255,255,255,.85);backdrop-filter:blur(8px);
-border-bottom:1px solid var(--line);z-index:10}
-nav .wrap{display:flex;align-items:center;gap:1.1rem;height:3.5rem}
-.logo{font-weight:700;font-size:1.05rem;letter-spacing:-.01em}
-.logo b{background:linear-gradient(90deg,var(--brand),var(--brand2));-webkit-background-clip:text;
-background-clip:text;color:transparent}
-nav .links{margin-left:auto;display:flex;gap:1.05rem;align-items:center;font-size:.92rem}
-nav .links a{color:var(--muted)}nav .links a.on{color:var(--fg);font-weight:600}
-.btn{display:inline-block;background:var(--brand);color:#fff!important;padding:.55rem .95rem;
-border-radius:8px;font-weight:600;font-size:.92rem;border:1px solid var(--brand);cursor:pointer}
-.btn:hover{background:#4338ca;text-decoration:none}
-.btn.ghost{background:#fff;color:var(--brand)!important}
-.hero{padding:4rem 0 2.4rem;text-align:center}
-.hero h1{font-size:2.6rem;line-height:1.1;letter-spacing:-.03em;margin:.3rem 0 1rem}
-.hero h1 span{background:linear-gradient(90deg,var(--brand),var(--brand2));-webkit-background-clip:text;
-background-clip:text;color:transparent}
-.hero p.lead{font-size:1.16rem;color:var(--muted);max-width:42rem;margin:0 auto 1.5rem}
-.cta{display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap}
-.badges{display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap;margin-top:1.5rem}
-select{width:100%;padding:.6rem .7rem;border:1px solid var(--line);border-radius:8px;background:#fff;font:inherit;margin-top:.3rem}table.kv{width:100%;border-collapse:collapse;margin:.6rem 0;font-size:.86rem}table.kv td{padding:.25rem .4rem;border-top:1px solid var(--line);vertical-align:top}table.kv td:first-child{color:var(--muted);white-space:nowrap;width:6.5rem}.badge{font-size:.82rem;color:var(--muted);background:var(--soft);border:1px solid var(--line);
-padding:.3rem .7rem;border-radius:999px}.badge b{color:var(--ok)}
-.stat{margin-top:1.3rem;font-size:.9rem;color:var(--muted)}.stat b{color:var(--fg)}
-.page{padding:2.6rem 0}
-h2{font-size:1.55rem;letter-spacing:-.02em;margin:0 0 .35rem}
-.sub{color:var(--muted);margin:0 0 1.6rem}
-.two{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1.6rem}
-.tile{display:block;border:1px solid var(--line);border-radius:14px;padding:1.4rem;background:#fff;
-color:inherit}
-.tile:hover{border-color:var(--brand);text-decoration:none;box-shadow:0 4px 20px rgba(79,70,229,.07)}
-.tile h3{margin:.2rem 0 .35rem;font-size:1.2rem}
-.tile p{margin:0;color:var(--muted)}
-.tile .arrow{color:var(--brand);font-weight:600;margin-top:.7rem;display:inline-block}
-.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-top:1.4rem}
-.card{border:1px solid var(--line);border-radius:12px;padding:1.2rem;background:#fff}
-.card .n{display:inline-flex;width:1.7rem;height:1.7rem;align-items:center;justify-content:center;
-border-radius:7px;background:var(--brand);color:#fff;font-weight:700;font-size:.9rem;margin-bottom:.6rem}
-.card h3{margin:.1rem 0 .4rem;font-size:1.05rem}.card p{margin:0;color:var(--muted);font-size:.94rem}
-pre.block{background:var(--code);color:#e5e7eb;padding:1.1rem 1.2rem;border-radius:10px;overflow:auto;
-font-size:.85rem;line-height:1.55}
-.note{background:var(--soft);border-left:3px solid var(--brand);padding:.8rem 1rem;border-radius:0 8px 8px 0;
-font-size:.92rem;color:#334155;margin:1rem 0}
-.list{display:flex;flex-direction:column;gap:.5rem;margin-top:.6rem}
-.item{border:1px solid var(--line);border-radius:9px;padding:.75rem .9rem;display:flex;
-justify-content:space-between;align-items:center;gap:1rem;font-size:.93rem}
-.item .price{color:var(--brand);font-weight:600;white-space:nowrap}
-.item.link{color:inherit}.item.link:hover{border-color:var(--brand);text-decoration:none}
-.dot{display:inline-block;width:.55rem;height:.55rem;border-radius:50%;margin-right:.5rem;vertical-align:middle}
-.dot.ok{background:var(--ok)}.dot.down{background:#dc2626}.dot.unk{background:#cbd5e1}
-.qbadge{display:inline-block;background:var(--soft);border:1px solid var(--line);border-radius:999px;
-font-size:.72rem;font-weight:600;color:var(--muted);padding:.05rem .45rem;margin-left:.45rem}
-.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:.8rem;margin:1rem 0}
-.kpi{border:1px solid var(--line);border-radius:10px;padding:.9rem}
-.kpi .v{font-size:1.4rem;font-weight:700}.kpi .l{font-size:.8rem;color:var(--muted)}
-.tabs{display:flex;gap:.4rem;border-bottom:1px solid var(--line);margin:1.2rem 0 .8rem}
-.tabs button{background:none;border:none;border-bottom:2px solid transparent;padding:.5rem .2rem;
-cursor:pointer;font:inherit;font-size:.92rem;color:var(--muted)}
-.tabs button.on{color:var(--fg);border-bottom-color:var(--brand);font-weight:600}
-.empty{color:var(--muted);font-size:.92rem}
-form.box{border:1px solid var(--line);border-radius:12px;padding:1.3rem;background:#fff;margin-top:1.2rem}
-label{display:block;font-size:.85rem;font-weight:600;margin:.7rem 0 .25rem}
-input,textarea{width:100%;padding:.55rem .7rem;border:1px solid var(--line);border-radius:8px;
-font:inherit;font-size:.93rem}
-textarea{min-height:4.5rem;resize:vertical}
-.row{display:grid;grid-template-columns:1fr 1fr;gap:.8rem}
-.muted{color:var(--muted)}
-.result{margin-top:1rem;padding:.9rem 1rem;border-radius:9px;font-size:.9rem;display:none}
-.result.ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;display:block}
-.result.err{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;display:block}
-details{border:1px solid var(--line);border-radius:10px;padding:.4rem 1rem;margin-bottom:.6rem}
-details summary{cursor:pointer;font-weight:600;padding:.5rem 0}details p{color:var(--muted);margin:.2rem 0 .8rem}
-footer{border-top:1px solid var(--line);padding:2rem 0;color:var(--muted);font-size:.88rem;margin-top:1rem}
-footer .wrap{display:flex;gap:1rem;flex-wrap:wrap;align-items:center}
-footer .flinks{margin-left:auto;display:flex;gap:1rem}
-@media(max-width:680px){.hero h1{font-size:2rem}.grid3,.two,.row{grid-template-columns:1fr}
-nav .links a:not(.btn){display:none}}
+body{margin:0;font-family:Fraunces,Charter,"Iowan Old Style",Georgia,serif;
+color:var(--fg);background:
+radial-gradient(circle at 12% 4%,rgba(194,65,12,.12),transparent 28rem),
+linear-gradient(180deg,#fbfaf6 0%,var(--bg) 58%,#f2eee4 100%);
+line-height:1.55;-webkit-font-smoothing:antialiased}
+a{color:var(--brand);text-decoration:none}a:hover{text-decoration:underline;text-underline-offset:3px}
+.wrap{max-width:72rem;margin:0 auto;padding:0 1.5rem}
+code,pre{font-family:"IBM Plex Mono","SFMono-Regular",Consolas,monospace}
+code{background:#efe9dc;padding:.14rem .42rem;border-radius:5px;font-size:.9em;color:#263238}
+nav{position:sticky;top:0;background:rgba(251,250,246,.92);backdrop-filter:blur(14px);
+border-bottom:1px solid rgba(91,82,66,.18);z-index:10}
+nav .wrap{display:flex;align-items:center;gap:1.05rem;min-height:4rem}
+.logo{display:flex;align-items:center;gap:.55rem;font-weight:800;font-size:1rem;letter-spacing:.01em;white-space:nowrap}
+.logo:before{content:"";width:.7rem;height:.7rem;border-radius:999px;background:var(--brand);
+box-shadow:1rem 0 0 var(--brand2),.5rem .75rem 0 #d9a441}
+.logo b{color:var(--brand);font-weight:800}
+nav .links{margin-left:auto;display:flex;gap:.18rem;align-items:center;font-size:.93rem;font-family:"IBM Plex Sans",Aptos,system-ui,sans-serif}
+nav .links a{color:#5f6778;padding:.56rem .7rem;border-radius:8px;font-weight:600}
+nav .links a.on{color:var(--fg);background:#eee7db}nav .links a:hover{text-decoration:none;background:#f0eadf;color:var(--fg)}
+.btn{display:inline-flex;align-items:center;justify-content:center;background:var(--fg);color:#fff!important;
+padding:.72rem 1rem;border-radius:8px;font-weight:800;font-size:.93rem;border:1px solid var(--fg);cursor:pointer;
+font-family:"IBM Plex Sans",Aptos,system-ui,sans-serif;box-shadow:0 8px 20px rgba(20,24,38,.12)}
+.btn:hover{background:#263047;text-decoration:none}.btn.ghost{background:transparent;color:var(--fg)!important;box-shadow:none;border-color:#b9ae9d}
+.hero{padding:5.8rem 0 3.2rem;text-align:left;position:relative;overflow:hidden}
+.hero .wrap{display:grid;grid-template-columns:minmax(0,1.04fr) minmax(22rem,.78fr);gap:2.6rem;align-items:center}
+.hero-kicker{display:inline-flex;gap:.45rem;align-items:center;color:#7a5740;background:#f2e8d9;border:1px solid #e2d1bc;
+border-radius:999px;padding:.32rem .7rem;font:700 .78rem "IBM Plex Sans",Aptos,system-ui,sans-serif;text-transform:uppercase;letter-spacing:.08em}
+.hero h1{font-size:clamp(3.15rem,7vw,6.8rem);line-height:.92;letter-spacing:0;margin:.9rem 0 1.05rem;max-width:11ch}
+.hero h1 span{color:var(--brand)}
+.hero p.lead{font-size:1.17rem;color:#4f5968;max-width:42rem;margin:0 0 1.55rem;font-family:"IBM Plex Sans",Aptos,system-ui,sans-serif}
+.hero-panel{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:1rem}
+.terminal{background:#111827;color:#e5e7eb;border-radius:8px;padding:1rem;min-height:15rem;font:500 .85rem/1.65 "IBM Plex Mono",Consolas,monospace;overflow:hidden}
+.terminal .muted{color:#94a3b8}.terminal .ok{color:#86efac}.terminal .pay{color:#fbbf24}.terminal .cyan{color:#5eead4}
+.rail{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin-top:.75rem}
+.rail div{background:#f4efe6;border:1px solid #e2d9c9;border-radius:8px;padding:.75rem;font-family:"IBM Plex Sans",Aptos,system-ui,sans-serif}
+.rail b{display:block;font-size:1.15rem}.rail span{display:block;color:var(--muted);font-size:.78rem}
+.cta{display:flex;gap:.75rem;flex-wrap:wrap}.badges{display:flex;gap:.48rem;flex-wrap:wrap;margin-top:1.35rem}
+select{width:100%;padding:.72rem .78rem;border:1px solid var(--line);border-radius:8px;background:#fffdfa;font:inherit;margin-top:.3rem}
+table.kv{width:100%;border-collapse:collapse;margin:.7rem 0;font-size:.86rem}table.kv td{padding:.32rem .45rem;border-top:1px solid var(--line);vertical-align:top}table.kv td:first-child{color:var(--muted);white-space:nowrap;width:6.5rem}.badge{font-size:.78rem;color:#53606f;background:#f2ede4;border:1px solid #ded4c4;
+padding:.32rem .65rem;border-radius:999px;font-family:"IBM Plex Sans",Aptos,system-ui,sans-serif}.badge b{color:var(--ok)}
+.stat{margin-top:1.25rem;font-size:.9rem;color:var(--muted);font-family:"IBM Plex Sans",Aptos,system-ui,sans-serif}.stat b{color:var(--fg)}
+.page{padding:3rem 0}h2{font-size:2rem;letter-spacing:0;margin:0 0 .35rem;line-height:1.1}.sub{color:var(--muted);margin:0 0 1.55rem;font-family:"IBM Plex Sans",Aptos,system-ui,sans-serif}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1.6rem}.tile{display:block;border:1px solid var(--line);border-radius:var(--radius);padding:1.35rem;background:var(--paper);color:inherit;box-shadow:0 10px 28px rgba(42,36,24,.04)}
+.tile:hover{border-color:#b6a98f;text-decoration:none;transform:translateY(-1px);box-shadow:var(--shadow)}.tile h3{margin:.1rem 0 .35rem;font-size:1.25rem}.tile p{margin:0;color:var(--muted);font-family:"IBM Plex Sans",Aptos,system-ui,sans-serif}.tile .arrow{color:var(--brand);font-weight:800;margin-top:.75rem;display:inline-block;font-family:"IBM Plex Sans",Aptos,system-ui,sans-serif}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-top:1.35rem}.card{border:1px solid var(--line);border-radius:var(--radius);padding:1.25rem;background:var(--paper);box-shadow:0 8px 24px rgba(42,36,24,.035)}.card .n{display:inline-flex;width:1.75rem;height:1.75rem;align-items:center;justify-content:center;border-radius:6px;background:#e7f0eb;color:var(--brand);font-weight:900;font-size:.86rem;margin-bottom:.65rem;font-family:"IBM Plex Sans",Aptos,system-ui,sans-serif}.card h3{margin:.1rem 0 .42rem;font-size:1.05rem}.card p{margin:0;color:var(--muted);font-size:.94rem;font-family:"IBM Plex Sans",Aptos,system-ui,sans-serif}
+pre.block{background:var(--code);color:#e5e7eb;padding:1.05rem 1.1rem;border-radius:8px;overflow:auto;font-size:.84rem;line-height:1.55}.note{background:#f2eadf;border:1px solid #e0d1bf;padding:.85rem 1rem;border-radius:8px;font-size:.93rem;color:#394253;margin:1rem 0;font-family:"IBM Plex Sans",Aptos,system-ui,sans-serif}
+.list{display:flex;flex-direction:column;gap:.55rem;margin-top:.6rem}.item{border:1px solid var(--line);border-radius:8px;padding:.82rem .92rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;font-size:.93rem;background:var(--paper);font-family:"IBM Plex Sans",Aptos,system-ui,sans-serif}.item .price{color:var(--brand);font-weight:800;white-space:nowrap}.item.link{color:inherit}.item.link:hover{border-color:#b6a98f;text-decoration:none;box-shadow:0 8px 20px rgba(42,36,24,.045)}
+.dot{display:inline-block;width:.55rem;height:.55rem;border-radius:50%;margin-right:.5rem;vertical-align:middle}.dot.ok{background:var(--ok)}.dot.down{background:#dc2626}.dot.unk{background:#cbd5e1}.qbadge{display:inline-block;background:#f1eadf;border:1px solid var(--line);border-radius:999px;font-size:.72rem;font-weight:700;color:var(--muted);padding:.05rem .45rem;margin-left:.45rem}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:.8rem;margin:1rem 0}.kpi{border:1px solid var(--line);border-radius:8px;padding:.9rem;background:var(--paper)}.kpi .v{font-size:1.25rem;font-weight:900}.kpi .l{font-size:.78rem;color:var(--muted);font-family:"IBM Plex Sans",Aptos,system-ui,sans-serif}
+.tabs{display:flex;gap:.35rem;border-bottom:1px solid var(--line);margin:1.2rem 0 .8rem}.tabs button{background:none;border:none;border-bottom:2px solid transparent;padding:.55rem .25rem;cursor:pointer;font:700 .92rem "IBM Plex Sans",Aptos,system-ui,sans-serif;color:var(--muted)}.tabs button.on{color:var(--fg);border-bottom-color:var(--brand)}.empty{color:var(--muted);font-size:.93rem;font-family:"IBM Plex Sans",Aptos,system-ui,sans-serif}
+form.box{border:1px solid var(--line);border-radius:var(--radius);padding:1.35rem;background:var(--paper);margin-top:1.2rem;box-shadow:0 10px 28px rgba(42,36,24,.04)}label{display:block;font:800 .82rem "IBM Plex Sans",Aptos,system-ui,sans-serif;margin:.75rem 0 .28rem;color:#394253}input,textarea{width:100%;padding:.72rem .78rem;border:1px solid var(--line);border-radius:8px;background:#fffdfa;font:500 .93rem "IBM Plex Sans",Aptos,system-ui,sans-serif;color:var(--fg)}input:focus,textarea:focus,select:focus{outline:2px solid rgba(15,118,110,.16);border-color:var(--brand)}textarea{min-height:4.8rem;resize:vertical}.row{display:grid;grid-template-columns:1fr 1fr;gap:.85rem}.muted{color:var(--muted)}.result{margin-top:1rem;padding:.9rem 1rem;border-radius:8px;font-size:.9rem;display:none;font-family:"IBM Plex Sans",Aptos,system-ui,sans-serif}.result.ok{background:#effaf4;border:1px solid #bbebcf;color:#166534;display:block}.result.err{background:#fff1ee;border:1px solid #fecaca;color:#991b1b;display:block}
+details{border:1px solid var(--line);border-radius:8px;padding:.45rem 1rem;margin-bottom:.65rem;background:var(--paper)}details summary{cursor:pointer;font-weight:800;padding:.55rem 0}details p{color:var(--muted);margin:.2rem 0 .8rem;font-family:"IBM Plex Sans",Aptos,system-ui,sans-serif}
+footer{border-top:1px solid var(--line);padding:2rem 0;color:var(--muted);font:.88rem "IBM Plex Sans",Aptos,system-ui,sans-serif;margin-top:1rem}footer .wrap{display:flex;gap:1rem;flex-wrap:wrap;align-items:center}footer .flinks{margin-left:auto;display:flex;gap:1rem}
+@media(max-width:900px){.hero .wrap{grid-template-columns:1fr}.hero h1{max-width:12ch}.hero-panel{order:-1}.grid3{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:680px){.wrap{padding:0 1rem}.hero{padding:3.2rem 0 2rem}.hero h1{font-size:3.15rem}.two,.row,.rail{grid-template-columns:1fr}nav .links a:not(.btn){display:none}nav .links{gap:.4rem}.btn{padding:.62rem .82rem}}
 """
 
 _NAV_ITEMS = [
@@ -150,21 +125,36 @@ def _shell(active: str, body: str, script: str = "") -> str:
 
 _HOME = """
 <header class="hero"><div class="wrap">
-  <h1>The marketplace for<br><span>agent-payable APIs</span></h1>
-  <p class="lead">List an existing API as a pay-per-call
-  <a href="https://x402.org" target="_blank" rel="noopener">x402</a> endpoint — or post what you wish
-  existed. Agents pay in USDC per request; the money lands <b>straight in the seller's wallet</b>.</p>
-  <div class="cta">
-    <a class="btn" href="/list">List a service &rarr;</a>
-    <a class="btn ghost" href="/requests">Request a service &rarr;</a>
+  <div>
+    <div class="hero-kicker">x402 relay for APIs, MCP and A2A</div>
+    <h1>Charge per call. <span>No wallet plumbing.</span></h1>
+    <p class="lead">Put an x402 payment wall in front of an existing endpoint. Agents pay in USDC per request; settlement goes straight to the seller wallet.</p>
+    <div class="cta">
+      <a class="btn" href="/list">List a service &rarr;</a>
+      <a class="btn ghost" href="/requests">Request a service &rarr;</a>
+    </div>
+    <div class="badges">
+      <span class="badge"><b>Free</b> — no platform cut</span>
+      <span class="badge">Pass-through settlement</span>
+      <span class="badge">Open source</span>
+      <span class="badge">Built on x402</span>
+    </div>
+    <div class="stat" id="stat"></div>
   </div>
-  <div class="badges">
-    <span class="badge"><b>Free</b> — no platform cut</span>
-    <span class="badge">Pass-through settlement</span>
-    <span class="badge">Open source</span>
-    <span class="badge">Built on x402</span>
+  <div class="hero-panel">
+    <div class="terminal"><span class="muted">$ curl https://hub.agent-tools.cloud/gw/acme/search</span><br>
+      <span class="pay">402 Payment Required</span><br>
+      <span class="muted">PAYMENT-REQUIRED: eyJ4NDAyVmVyc2lvbiI...</span><br><br>
+      <span class="muted">$ x402-client retry --pay</span><br>
+      <span class="ok">settled</span> <span class="muted">buyer -> seller payTo</span><br>
+      <span class="cyan">200 OK</span> <span class="muted">proxied upstream response</span>
+    </div>
+    <div class="rail">
+      <div><b>0%</b><span>platform cut</span></div>
+      <div><b>v2</b><span>x402 header flow</span></div>
+      <div><b>MCP</b><span>tool calls billed</span></div>
+    </div>
   </div>
-  <div class="stat" id="stat"></div>
 </div></header>
 
 <section class="page"><div class="wrap">
