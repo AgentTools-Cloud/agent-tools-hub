@@ -178,6 +178,11 @@ class Settings(BaseSettings):
     directory_submit_url: str = ""
     directory_submit_token: str = ""
 
+    # shared agent-tools.cloud accounts (identity only; read-only DB access)
+    session_secret: str = ""
+    directory_db_path: str = ""
+    directory_url: str = "https://agent-tools.cloud"
+
     # --- resolved facilitator config (preset-aware) ---
     @property
     def _preset(self) -> dict | None:

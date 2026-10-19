@@ -26,13 +26,15 @@ router = APIRouter()
 
 from .config import (FACILITATOR_PRESETS, SELECTABLE_FACILITATORS,
                      facilitator_public, get_settings)
-from . import safety
+from . import accounts, safety
 
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$")
 _ADDR_RE = re.compile(r"^0x[a-fA-F0-9]{40}$")
 
 # fields we never expose publicly
 _SECRET_FIELDS = {"upstream_auth_enc", "proxy_secret", "upstream_auth_header"}
+# internal moderation fields stay out of public listings
+_PUBLIC_HIDDEN = _SECRET_FIELDS | {"review_note", "reviewed_at"}
 
 
 class SubmitRequest(BaseModel):
@@ -112,7 +114,20 @@ async def test_upstream(req: TestRequest, request: Request) -> dict:
 
 
 def _public_view(row: dict) -> dict:
-    return {k: v for k, v in row.items() if k not in _SECRET_FIELDS}
+    return {k: v for k, v in row.items() if k not in _PUBLIC_HIDDEN}
+
+
+def _sign_in_url(settings) -> str:
+    return (settings.directory_url.rstrip("/") + "/auth/hub?next="
+            + settings.public_url.rstrip("/") + "/my")
+
+
+def _require_account(request: Request) -> dict:
+    user = accounts.current_user(request)
+    if user is None:
+        raise HTTPException(401, {"error": "sign_in_required",
+                                  "sign_in_url": _sign_in_url(request.app.state.settings)})
+    return user
 
 
 def _require_admin(authorization: str | None, settings) -> None:
@@ -125,6 +140,7 @@ def _require_admin(authorization: str | None, settings) -> None:
 async def submit(req: SubmitRequest, request: Request) -> dict:
     db = request.app.state.db
     box = request.app.state.secret_box
+    user = _require_account(request)
 
     if not _SLUG_RE.match(req.service_slug):
         raise HTTPException(422, "slug must be lowercase alphanumeric/hyphen, 3-40 chars")
@@ -146,9 +162,13 @@ async def submit(req: SubmitRequest, request: Request) -> dict:
 
     seller_slug = f"{req.service_slug}-owner"
     seller = db.get_seller(seller_slug)
+    if seller and seller.get("account_id") not in (None, user["id"]):
+        raise HTTPException(409, f"slug '{req.service_slug}' already taken")
     seller_id = seller["id"] if seller else db.create_seller(
-        slug=seller_slug, name=req.seller_name, contact_email=req.contact_email,
+        slug=seller_slug, name=req.seller_name or user["login"],
+        contact_email=req.contact_email or user["email"],
         payout_address=req.payout_address, payout_network=req.payout_network,
+        account_id=user["id"],
     )
 
     enc = box.encrypt(req.upstream_auth_value) if req.upstream_auth_value else None
@@ -217,8 +237,23 @@ async def reject(payload: dict, request: Request,
     slug = payload.get("service_slug")
     if not slug or db.get_service(slug) is None:
         raise HTTPException(404, "service not found")
-    db.set_service_status(slug, "rejected")
-    return {"status": "rejected", "service_slug": slug}
+    note = (payload.get("note") or "").strip()[:500] or None
+    db.set_service_status(slug, "rejected", note)
+    return {"status": "rejected", "service_slug": slug, "note": note}
+
+
+@router.get("/api/v1/me")
+async def whoami(request: Request) -> dict:
+    user = accounts.current_user(request)
+    if user is None:
+        return {"signed_in": False, "sign_in_url": _sign_in_url(request.app.state.settings)}
+    return {"signed_in": True, "login": user["login"], "avatar_url": user["avatar_url"]}
+
+
+@router.get("/api/v1/my/services")
+async def my_services(request: Request) -> list[dict]:
+    user = _require_account(request)
+    return request.app.state.db.services_for_account(user["id"])
 
 
 @router.get("/api/v1/admin/services")

@@ -102,17 +102,39 @@ class DB:
                 self._conn.execute(
                     "ALTER TABLE services ADD COLUMN facilitator TEXT NOT NULL DEFAULT ''"
                 )
+            if "review_note" not in cols:
+                self._conn.execute("ALTER TABLE services ADD COLUMN review_note TEXT")
+            if "reviewed_at" not in cols:
+                self._conn.execute("ALTER TABLE services ADD COLUMN reviewed_at INTEGER")
+            seller_cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(sellers)")}
+            if "account_id" not in seller_cols:
+                # agent-tools.cloud users.id; NULL for anonymous legacy submissions
+                self._conn.execute("ALTER TABLE sellers ADD COLUMN account_id INTEGER")
+                self._conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_sellers_account ON sellers(account_id)")
 
     # --- sellers ---
     def create_seller(self, *, slug: str, name: str | None, contact_email: str | None,
-                      payout_address: str, payout_network: str) -> int:
+                      payout_address: str, payout_network: str,
+                      account_id: int | None = None) -> int:
         with self._lock:
             cur = self._conn.execute(
-                "INSERT INTO sellers(slug,name,contact_email,payout_address,payout_network,created_at) "
-                "VALUES (?,?,?,?,?,?)",
-                (slug, name, contact_email, payout_address, payout_network, int(time.time())),
+                "INSERT INTO sellers(slug,name,contact_email,payout_address,payout_network,"
+                "created_at,account_id) VALUES (?,?,?,?,?,?,?)",
+                (slug, name, contact_email, payout_address, payout_network, int(time.time()),
+                 account_id),
             )
             return int(cur.lastrowid)
+
+    def services_for_account(self, account_id: int) -> list[dict]:
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT s.slug, s.status, s.health, s.price_usdc, s.description, s.category, "
+                "s.created_at, s.review_note, s.reviewed_at, s.upstream_base_url, "
+                "se.payout_address, se.payout_network FROM services s "
+                "JOIN sellers se ON se.id=s.seller_id WHERE se.account_id=? "
+                "ORDER BY s.created_at DESC", (account_id,))
+            return cur.fetchall()
 
     def get_seller(self, slug: str) -> dict | None:
         with self._lock:
@@ -141,9 +163,11 @@ class DB:
             cur = self._conn.execute("SELECT * FROM services WHERE slug=?", (slug,))
             return cur.fetchone()
 
-    def set_service_status(self, slug: str, status: str) -> None:
+    def set_service_status(self, slug: str, status: str, note: str | None = None) -> None:
         with self._lock:
-            self._conn.execute("UPDATE services SET status=? WHERE slug=?", (status, slug))
+            self._conn.execute(
+                "UPDATE services SET status=?, review_note=?, reviewed_at=? WHERE slug=?",
+                (status, note, int(time.time()), slug))
 
     def set_service_health(self, slug: str, health: str) -> None:
         with self._lock:

@@ -91,6 +91,11 @@ _NAV_ITEMS = [
 _ESC_JS = """
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
 return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+var HUB_ME=fetch('/api/v1/me',{credentials:'same-origin'}).then(function(r){return r.json();})
+  .catch(function(){return {signed_in:false};});
+HUB_ME.then(function(me){var a=document.getElementById('acct');if(!a)return;
+  if(me.signed_in){a.textContent='My services ('+me.login+')';a.href='/my';}
+  else{a.textContent='Sign in';a.href=me.sign_in_url||'/my';}});
 """
 
 
@@ -109,6 +114,7 @@ def _shell(active: str, body: str, script: str = "") -> str:
         "<nav><div class=\"wrap\"><div class=\"logo\">agent-tools <b>hub</b></div>"
         "<div class=\"links\">" + links +
         "<a href=\"__GITHUB__\" target=\"_blank\" rel=\"noopener\">GitHub</a>"
+        "<a id=\"acct\" href=\"/my\">Sign in</a>"
         "<a class=\"btn ghost\" href=\"/list\">List your API</a>"
         "<a class=\"btn\" href=\"/requests\">Request a Service</a></div></div></nav>"
         + body +
@@ -336,6 +342,9 @@ _LIST = """
     <button data-step="3">3 · Review</button>
   </div>
 
+  <div class="note" id="signInGate" style="display:none;margin:0 0 1rem">
+    <b>Sign in to submit.</b> Listings are tied to your agent-tools.cloud account so you can track
+    review status. <a class="btn" id="signInBtn" href="/my">Sign in with GitHub &rarr;</a></div>
   <form class="box" id="listForm">
     <div class="wstep" data-step="1">
       <label>Service slug *</label>
@@ -389,6 +398,9 @@ _LIST = """
 _LIST_JS = """
 (function(){
   var form=document.getElementById('listForm');
+  HUB_ME.then(function(me){ if(me.signed_in) return;
+    document.getElementById('signInGate').style.display='';
+    document.getElementById('signInBtn').href=me.sign_in_url||'/my'; });
   var tabs=document.getElementById('wizTabs').querySelectorAll('button');
   var FACS={};
   fetch('/api/v1/facilitators').then(function(r){return r.json();}).then(function(d){
@@ -432,13 +444,16 @@ _LIST_JS = """
     upstream_auth_header:f.upstream_auth_header.value.trim()||null,
     upstream_auth_value:f.upstream_auth_value.value.trim()||null,
     description:f.description.value.trim()||null};
-  fetch('/api/v1/submit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)})
+  fetch('/api/v1/submit',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify(body)})
    .then(res=>res.json().then(j=>({ok:res.ok,j:j})))
    .then(function(o){
      if(o.ok){r.className='result ok';
-       r.innerHTML='Submitted &amp; pending review. <b>Save your proxy_secret now</b> (shown once): <code>'
+       r.innerHTML='Submitted &amp; pending review — track it on <a href="/my">My services</a>. '
+       +'<b>Save your proxy_secret now</b> (shown once): <code>'
        +esc(o.j.proxy_secret)+'</code>';f.reset();show(1);}
-     else{r.className='result err';r.textContent='Error: '+(o.j.detail||JSON.stringify(o.j));}
+     else if(o.j.detail&&o.j.detail.sign_in_url){r.className='result err';
+       r.innerHTML='Please <a href="'+esc(o.j.detail.sign_in_url)+'">sign in</a> first.';}
+     else{r.className='result err';r.textContent='Error: '+(typeof o.j.detail==='string'?o.j.detail:JSON.stringify(o.j.detail||o.j));}
    }).catch(()=>{r.className='result err';r.textContent='Network error.';});
   });
 })();
@@ -517,6 +532,41 @@ async def needs_redirect() -> RedirectResponse:
 @router.get("/list", response_class=HTMLResponse)
 async def list_page(request: Request) -> HTMLResponse:
     return _render("list", _LIST, _LIST_JS, _public(request))
+
+
+_MY = """
+<section class="page"><div class="wrap">
+  <h2>My services</h2>
+  <p class="sub" id="myWho">Checking your agent-tools.cloud sign-in…</p>
+  <div id="myList"></div>
+  <p style="margin-top:1.2rem"><a class="btn ghost" href="/list">List another API &rarr;</a></p>
+</div></section>
+"""
+
+_MY_JS = """
+HUB_ME.then(function(me){
+  var who=document.getElementById('myWho'), box=document.getElementById('myList');
+  if(!me.signed_in){ location.replace(me.sign_in_url||'/'); return; }
+  who.innerHTML='Signed in as <b>'+esc(me.login)+'</b> via agent-tools.cloud.';
+  fetch('/api/v1/my/services',{credentials:'same-origin'}).then(function(r){return r.json();}).then(function(list){
+    if(!Array.isArray(list)||!list.length){ box.innerHTML='<p class="muted">No submissions yet.</p>'; return; }
+    var label={pending:'Pending review',live:'Live',rejected:'Rejected',paused:'Paused'};
+    box.innerHTML='<table class="kv">'+list.map(function(s){
+      return '<tr><td>'+esc(s.slug)+'</td><td><b>'+esc(label[s.status]||s.status)+'</b>'
+        +(s.review_note?'<br><span class="muted">Reason: '+esc(s.review_note)+'</span>':'')
+        +'<br><span class="muted">$'+esc(s.price_usdc)+'/call · '+esc(s.upstream_base_url)+'</span>'
+        +(s.status==='live'?'<br><a href="/services/'+encodeURIComponent(s.slug)+'">View listing</a>':'')
+        +'</td></tr>';}).join('')+'</table>';
+  }).catch(function(){ box.innerHTML='<p class="muted">Could not load your services.</p>'; });
+});
+"""
+
+
+@router.get("/my", response_class=HTMLResponse)
+async def my_page(request: Request) -> HTMLResponse:
+    resp = _render("my", _MY, _MY_JS, _public(request))
+    resp.headers["Cache-Control"] = "private, no-store"
+    return resp
 
 
 @router.get("/backends", response_class=HTMLResponse)
