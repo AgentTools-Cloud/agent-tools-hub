@@ -26,7 +26,7 @@ router = APIRouter()
 
 from .config import (FACILITATOR_PRESETS, SELECTABLE_FACILITATORS,
                      facilitator_public, get_settings)
-from . import accounts, safety
+from . import accounts, public_http, safety
 
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$")
 _ADDR_RE = re.compile(r"^0x[a-fA-F0-9]{40}$")
@@ -68,6 +68,11 @@ async def probe_upstream(url: str, *, method: str = "GET",
     guard runs first (we never probe internal/metadata hosts)."""
     target = url.rstrip("/") + (("/" + path.lstrip("/")) if path else "")
     reason = safety.upstream_host_reason(target)
+    if not reason:
+        try:
+            public_http.parse_url(target)
+        except public_http.UnsafeURL as exc:
+            reason = str(exc)
     if reason:
         return {"reachable": False, "error": f"blocked: {reason}",
                 "http_status": None, "latency_ms": None}
@@ -76,9 +81,8 @@ async def probe_upstream(url: str, *, method: str = "GET",
         headers[auth_header] = auth_value
     t0 = time.monotonic()
     try:
-        async with httpx.AsyncClient(
-                timeout=httpx.Timeout(connect=6.0, read=timeout, write=6.0, pool=6.0),
-                follow_redirects=False) as c:
+        async with public_http.async_client(
+                timeout=httpx.Timeout(connect=6.0, read=timeout, write=6.0, pool=6.0)) as c:
             r = await c.request(method, target, headers=headers)
         dt = int((time.monotonic() - t0) * 1000)
         return {"reachable": r.status_code < 500, "http_status": r.status_code,
@@ -87,6 +91,9 @@ async def probe_upstream(url: str, *, method: str = "GET",
         return {"reachable": False, "http_status": None,
                 "latency_ms": int((time.monotonic() - t0) * 1000),
                 "error": str(e)[:160]}
+    except public_http.UnsafeURL as e:
+        return {"reachable": False, "error": f"blocked: {e}",
+                "http_status": None, "latency_ms": None}
 
 
 class TestRequest(BaseModel):
@@ -100,6 +107,7 @@ class TestRequest(BaseModel):
 @router.post("/api/v1/test", tags=["sellers"])
 async def test_upstream(req: TestRequest, request: Request) -> dict:
     """Dummy smoke test: hit a candidate upstream once and report reachability."""
+    _require_account(request)
     if not req.upstream_base_url.startswith(("http://", "https://")):
         raise HTTPException(422, "upstream_base_url must be http(s)")
     res = await probe_upstream(
@@ -301,6 +309,7 @@ async def get_detail(slug: str, request: Request) -> dict:
 
 @router.post("/api/v1/needs")
 async def post_need(req: NeedRequest, request: Request) -> dict:
+    _require_account(request)
     need_id = request.app.state.db.create_need(
         title=req.title.strip(), description=(req.description or None),
         category=(req.category or None), budget_usd=req.budget_usd,

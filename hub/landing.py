@@ -291,6 +291,8 @@ _NEEDS = """
     </div>
     <label>Contact (kept private, optional)</label>
     <input name="contact" maxlength="200" placeholder="you@example.com — not shown on the public board">
+    <div class="note" id="needSignIn" style="display:none;margin:1rem 0 0">
+      <b>Sign in to post a request.</b> <a class="btn" id="needSignInBtn" href="/my">Sign in with GitHub &rarr;</a></div>
     <div style="margin-top:1rem"><button class="btn" type="submit">Submit request</button></div>
     <div class="result" id="needResult"></div>
   </form>
@@ -311,6 +313,9 @@ function loadNeeds(){
   }).catch(()=>{document.getElementById('needs').innerHTML='<div class="empty">Could not load needs.</div>';});
 }
 loadNeeds();
+HUB_ME.then(function(me){ if(me.signed_in) return;
+  document.getElementById('needSignIn').style.display='';
+  document.getElementById('needSignInBtn').href=me.sign_in_url||'/my'; });
 document.getElementById('needForm').addEventListener('submit',function(e){
   e.preventDefault();
   var f=e.target, r=document.getElementById('needResult');
@@ -322,6 +327,7 @@ document.getElementById('needForm').addEventListener('submit',function(e){
    .then(res=>res.json().then(j=>({ok:res.ok,j:j})))
    .then(function(o){
      if(o.ok){r.className='result ok';r.textContent='Posted! Your request is now on the board.';f.reset();loadNeeds();}
+     else if(o.j.detail&&o.j.detail.sign_in_url){location.href=o.j.detail.sign_in_url;}
      else{r.className='result err';r.textContent='Error: '+(o.j.detail||JSON.stringify(o.j));}
    }).catch(()=>{r.className='result err';r.textContent='Network error.';});
 });

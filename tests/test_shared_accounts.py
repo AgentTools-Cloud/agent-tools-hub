@@ -145,6 +145,17 @@ with TestClient(app) as c:
           and page.headers.get("cache-control") == "private, no-store")
     check("list page carries the sign-in gate", 'id="signInGate"' in c.get("/list").text)
 
+    r = c.post("/api/v1/test", json={"upstream_base_url": "https://api.example.com"})
+    check("anonymous upstream test is refused", r.status_code == 401
+          and "auth/hub" in r.json()["detail"]["sign_in_url"])
+    check("signed-in upstream test runs", c.post("/api/v1/test", cookies=ALICE,
+          json={"upstream_base_url": "https://api.example.com"}).json().get("ok") is True)
+    need = {"title": "Cheap OCR please"}
+    check("anonymous need is refused", c.post("/api/v1/needs", json=need).status_code == 401)
+    check("signed-in need is posted", c.post("/api/v1/needs", cookies=ALICE,
+          json=need).json().get("status") == "open")
+    check("requests page carries the sign-in note", 'id="needSignIn"' in c.get("/requests").text)
+
 with sqlite3.connect(HUB_DB) as h:
     legacy = h.execute("SELECT COUNT(*) FROM sellers WHERE account_id IS NULL").fetchone()[0]
     cols = {r[1] for r in h.execute("PRAGMA table_info(services)")}
