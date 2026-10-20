@@ -51,8 +51,13 @@ mainnet USDC differ), so `clone → up` works out of the box on testnet.
 
 ## List a service
 
+Submitting needs an [agent-tools.cloud](https://agent-tools.cloud) account: sign in
+with GitHub on the [list page](https://hub.agent-tools.cloud/list), or send a
+main-site API key (`POST https://agent-tools.cloud/api/v1/keys` mints one).
+
 ```bash
 curl -X POST https://hub.agent-tools.cloud/api/v1/submit \
+  -H "Authorization: Bearer $AGENT_TOOLS_API_KEY" \
   -H 'content-type: application/json' \
   -d '{
         "service_slug": "my-api",
@@ -89,16 +94,26 @@ Buyers then point any x402 client at `https://hub.agent-tools.cloud/gw/my-api/..
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `POST` | `/api/v1/submit` | none | self-serve list a service (status=pending) |
+| `POST` | `/api/v1/submit` | account | list a service (status=pending) |
+| `POST` | `/api/v1/test` | account | probe an upstream once before submitting |
+| `GET`  | `/api/v1/me` | none | current account (`signed_in`, `sign_in_url`) |
+| `GET`  | `/api/v1/my/services` | account | your submissions + review status/reason |
+| `GET`  | `/api/v1/facilitators` | none | selectable settlement backends |
 | `POST` | `/api/v1/admin/approve` | admin | probe + go live + mirror to directory |
 | `POST` | `/api/v1/admin/reject` | admin | reject a submission |
 | `GET`  | `/api/v1/admin/services` | admin | list all (any status) |
 | `GET`  | `/api/v1/services` | none | list live services (no secrets) |
 | `GET`  | `/api/v1/services/{slug}` | none | one live service (no secrets) |
-| `POST` | `/api/v1/needs` | none | post a demand ("I need an API that…") |
+| `POST` | `/api/v1/needs` | account | post a demand ("I need an API that…") |
 | `GET`  | `/api/v1/needs` | none | browse open needs (contact hidden) |
 | `ANY`  | `/gw/{slug}/{path}` | x402 | the paywalled reverse proxy |
 | `GET`  | `/healthz` · `/stats` | none | ops |
+
+`account` = an agent-tools.cloud sign-in: the `atc_hub` cookie set by
+`https://agent-tools.cloud/auth/hub`, or `Authorization: Bearer atc_live_…`.
+Without one these return `401` with a `sign_in_url`. Seller upstream URLs must
+resolve only to public addresses; probes connect to the validated IP and do not
+follow redirects.
 
 ## Layout
 
@@ -111,7 +126,10 @@ hub/
 ├── facilitator.py   HTTP client for /verify + /settle
 ├── x402.py          402 challenge builder (+ extensions.bazaar)
 ├── gateway.py       per-call x402 reverse proxy
-├── sellers.py       self-serve submit + admin approval
+├── accounts.py      agent-tools.cloud identity (read-only main-site DB)
+├── safety.py        upstream host checks (no private / metadata targets)
+├── public_http.py   public-IP-pinned client for seller-URL probes
+├── sellers.py       submit, my services, needs, admin approval
 └── landing.py       home / health / stats
 ```
 
