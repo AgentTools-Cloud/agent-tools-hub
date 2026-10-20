@@ -156,7 +156,7 @@ class Settings(BaseSettings):
     listen_port: int = 9300
     public_url: str = "https://hub.agent-tools.cloud"
 
-    # upstream facilitator: a preset name (x402-org | cdp | self) OR a full URL.
+    # upstream facilitator: a FACILITATOR_PRESETS name OR a full URL.
     # Money always settles straight to the seller payTo — the hub never holds funds.
     facilitator: str = "payai"
     # optional bearer token for facilitators that need one (e.g. custom / CDP)

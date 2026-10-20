@@ -41,13 +41,20 @@ never holds funds). It accepts a preset name or a full URL:
 
 | `FACILITATOR` | facilitator | chain | cost |
 |---|---|---|---|
-| `x402-org` *(default)* | Coinbase hosted | Base **Sepolia** testnet | none — no key, no gas. Best for dogfood. |
+| `payai` *(code default)* | PayAI | Base mainnet (+ Polygon, Arbitrum, …) | 10,000 settlements/month free, no key |
+| `x402fi` | x402.fi | Base mainnet (+ others) | free, no key |
+| `mogami` | Mogami | Base mainnet | free, no key |
+| `payai-testnet` | PayAI | Base **Sepolia** testnet | free — test USDC |
+| `x402-org` *(`.env.example`)* | Coinbase hosted | Base **Sepolia** testnet | none — no key, no gas. Best for dogfood. |
 | `cdp` | Coinbase CDP | Base mainnet | needs `FACILITATOR_API_KEY` (CDP JWT) |
 | `self` | your own [facilitator](https://github.com/AgentTools-Cloud/facilitator) | Base mainnet | you run it + pay gas |
 | `https://…` | any custom facilitator | set `NETWORK` + `USDC_ADDRESS_BASE` | — |
 
 Each preset auto-selects the matching `NETWORK` and USDC contract (testnet vs
-mainnet USDC differ), so `clone → up` works out of the box on testnet.
+mainnet USDC differ). With no `FACILITATOR` set the hub uses `payai` on Base
+**mainnet** (real USDC); `.env.example` sets `x402-org`, so `clone → cp .env.example
+→ up` starts on testnet. Sellers pick from `payai`, `x402fi`, `mogami` and
+`payai-testnet` on the submit form.
 
 ## List a service
 
