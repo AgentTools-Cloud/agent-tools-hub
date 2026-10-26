@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI):
     # by us (a redirect to 169.254.169.254 / an internal host would bypass the
     # submit-time SSRF check). We relay the 3xx back to the caller instead.
     app.state.proxy_client = httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=8.0, read=30.0, write=15.0, pool=8.0),
+        timeout=httpx.Timeout(connect=8.0, read=600.0, write=120.0, pool=8.0),
         follow_redirects=False,
         limits=httpx.Limits(max_connections=100, max_keepalive_connections=20))
 
