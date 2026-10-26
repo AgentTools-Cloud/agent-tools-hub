@@ -108,6 +108,7 @@ def _apply_request_policy(*, service: dict, path: str, method: str,
         return body, _policy_response(413, "request body exceeds service limit")
 
     needs_json = bool(policy.get("require_json") or policy.get("fixed_model")
+                      or policy.get("upstream_model")
                       or policy.get("max_output_tokens") is not None
                       or policy.get("allow_stream") is False)
     if not needs_json:
@@ -120,11 +121,16 @@ def _apply_request_policy(*, service: dict, path: str, method: str,
         return body, _policy_response(400, "JSON body must be an object")
 
     fixed_model = policy.get("fixed_model")
+    upstream_model = policy.get("upstream_model")
+    if upstream_model is not None and (
+            not isinstance(upstream_model, str) or not upstream_model
+    ):
+        return body, _policy_response(503, "service request policy is invalid")
     requested_model = payload.get("model")
     if fixed_model:
         if requested_model not in (None, "", fixed_model):
             return body, _policy_response(422, "this service only offers its fixed model")
-        payload["model"] = fixed_model
+        payload["model"] = upstream_model or fixed_model
     if policy.get("allow_stream") is False and payload.get("stream") is True:
         return body, _policy_response(422, "streaming is not offered by this service")
 

@@ -9,12 +9,13 @@ from hub.sellers import _public_view
 
 def _service(**overrides):
     service = {
-        "slug": "tianshu-deepseek-v4-flash",
+        "slug": "tianshu-deepseek-v4-flash-0731",
         "request_policy_json": json.dumps({
             "allowed_methods": ["POST"],
             "allowed_paths": ["v1/chat/completions"],
             "require_json": True,
-            "fixed_model": "deepseek-ai/DeepSeek-V4-Flash",
+            "fixed_model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+            "upstream_model": "deepseek-ai/DeepSeek-V4-Flash",
             "max_request_bytes": 20 * 1024 * 1024,
             "max_output_tokens": 4096,
             "allow_stream": False,
@@ -70,16 +71,18 @@ def test_policy_injects_model_and_default_output_cap():
 
 def test_policy_accepts_exact_model_and_small_limit():
     result, error = _apply({
-        "model": "deepseek-ai/DeepSeek-V4-Flash",
+        "model": "deepseek-ai/DeepSeek-V4-Flash-0731",
         "messages": [],
         "max_completion_tokens": 128,
     })
     assert error is None
-    assert json.loads(result)["max_completion_tokens"] == 128
+    payload = json.loads(result)
+    assert payload["model"] == "deepseek-ai/DeepSeek-V4-Flash"
+    assert payload["max_completion_tokens"] == 128
 
 
 def test_policy_rejects_wrong_model_before_payment():
-    _, error = _apply({"model": "Anthropic/Claude-Opus-5.5", "messages": []})
+    _, error = _apply({"model": "deepseek-ai/DeepSeek-V4-Flash", "messages": []})
     assert error.status_code == 422
     assert "fixed model" in _error(error)
 
@@ -124,7 +127,7 @@ def test_db_persists_request_policy(tmp_path):
     policy = _service()["request_policy_json"]
     db.create_service(
         seller_id=seller_id,
-        slug="tianshu-deepseek-v4-flash",
+        slug="tianshu-deepseek-v4-flash-0731",
         upstream_base_url="https://tianshu-gateway.cloud",
         upstream_auth_header="Authorization",
         upstream_auth_enc="encrypted",
@@ -134,16 +137,16 @@ def test_db_persists_request_policy(tmp_path):
         facilitator="payai",
         request_policy_json=policy,
     )
-    row = db.service_with_payout("tianshu-deepseek-v4-flash")
+    row = db.service_with_payout("tianshu-deepseek-v4-flash-0731")
     assert row["request_policy_json"] == policy
 
 
 def test_public_service_view_hides_request_policy():
     public = _public_view({
-        "slug": "tianshu-deepseek-v4-flash",
+        "slug": "tianshu-deepseek-v4-flash-0731",
         "request_policy_json": _service()["request_policy_json"],
     })
-    assert public == {"slug": "tianshu-deepseek-v4-flash"}
+    assert public == {"slug": "tianshu-deepseek-v4-flash-0731"}
 
 
 def test_base_usdc_requirements_use_onchain_eip712_name():
@@ -165,3 +168,13 @@ def test_policy_accepts_prompt_larger_than_old_limit():
     assert error is None
     payload = json.loads(result)
     assert payload["messages"][0]["content"] == prompt
+
+
+def test_policy_rejects_invalid_upstream_model_config():
+    policy = json.loads(_service()["request_policy_json"])
+    policy["upstream_model"] = ""
+    _, error = _apply_request_policy(
+        service=_service(request_policy_json=json.dumps(policy)),
+        path="v1/chat/completions", method="POST", body=b"{}",
+    )
+    assert error.status_code == 503
