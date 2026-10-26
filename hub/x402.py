@@ -77,8 +77,13 @@ def encode_challenge_header(challenge: dict) -> str:
 
 
 
+def encode_payment_response(response: dict) -> str:
+    # x402 v2 PAYMENT-RESPONSE is base64(JSON).
+    return base64.b64encode(json.dumps(response).encode("utf-8")).decode("utf-8")
+
+
 def decode_payment_header(header_value: str) -> dict | None:
-    """Decode the base64 X-PAYMENT header into the payment payload dict."""
+    # Decode PAYMENT-SIGNATURE or legacy X-PAYMENT base64 JSON.
     try:
         raw = base64.b64decode(header_value)
         return json.loads(raw)

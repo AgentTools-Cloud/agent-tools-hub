@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS services (
     category            TEXT,
     health              TEXT DEFAULT 'unknown',
     created_at          INTEGER NOT NULL,
+    request_policy_json TEXT,             -- optional gateway-side request constraints
     status              TEXT NOT NULL DEFAULT 'pending',  -- pending|live|paused|rejected
     quality_score       INTEGER NOT NULL DEFAULT 0        -- 0-100, like MCPay moderation score
 );
@@ -102,6 +103,8 @@ class DB:
                 self._conn.execute(
                     "ALTER TABLE services ADD COLUMN facilitator TEXT NOT NULL DEFAULT ''"
                 )
+            if "request_policy_json" not in cols:
+                self._conn.execute("ALTER TABLE services ADD COLUMN request_policy_json TEXT")
             if "review_note" not in cols:
                 self._conn.execute("ALTER TABLE services ADD COLUMN review_note TEXT")
             if "reviewed_at" not in cols:
@@ -145,16 +148,18 @@ class DB:
     def create_service(self, *, seller_id: int, slug: str, upstream_base_url: str,
                        upstream_auth_header: str | None, upstream_auth_enc: str | None,
                        price_usdc: float, description: str | None,
-                       category: str | None, facilitator: str = "") -> tuple[int, str]:
+                       category: str | None, facilitator: str = "",
+                       request_policy_json: str | None = None) -> tuple[int, str]:
         proxy_secret = secrets.token_urlsafe(24)
         with self._lock:
             cur = self._conn.execute(
                 "INSERT INTO services(seller_id,slug,upstream_base_url,upstream_auth_header,"
                 "upstream_auth_enc,proxy_secret,price_usdc,description,category,facilitator,"
-                "created_at,status) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending')",
+                "request_policy_json,created_at,status) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'pending')",
                 (seller_id, slug, upstream_base_url, upstream_auth_header, upstream_auth_enc,
-                 proxy_secret, price_usdc, description, category, facilitator, int(time.time())),
+                 proxy_secret, price_usdc, description, category, facilitator,
+                 request_policy_json, int(time.time())),
             )
             return int(cur.lastrowid), proxy_secret
 

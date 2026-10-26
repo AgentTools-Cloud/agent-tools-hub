@@ -184,7 +184,7 @@ async def submit(req: SubmitRequest, request: Request) -> dict:
         seller_id=seller_id, slug=req.service_slug, upstream_base_url=req.upstream_base_url,
         upstream_auth_header=req.upstream_auth_header, upstream_auth_enc=enc,
         price_usdc=req.price_usdc, description=req.description, category=req.category,
-        facilitator=fac,
+        facilitator=fac, request_policy_json=None,
     )
     log.info("submit: service=%s id=%s status=pending", req.service_slug, service_id)
     smoke = await probe_upstream(

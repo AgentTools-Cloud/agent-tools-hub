@@ -1,8 +1,8 @@
 """Multi-tenant reverse-proxy gateway with per-call x402.
 
 Flow for ANY /gw/{slug}/{path}:
-  1. no X-PAYMENT  -> 402 + challenge (payTo = seller, price, USDC/Base, bazaar)
-  2. with X-PAYMENT -> facilitator /settle (USDC buyer -> seller payTo, hub takes nothing)
+  1. no payment signature -> 402 + challenge (payTo = seller, price, USDC/Base, bazaar)
+  2. with PAYMENT-SIGNATURE (or legacy X-PAYMENT) -> facilitator /settle
   3. settled       -> proxy to upstream, inject seller's upstream key + X-Hub-Secret
                       (anti-freeload: seller's origin verifies the secret)
 
@@ -36,7 +36,7 @@ _HOP_BY_HOP = {
     "te", "trailers", "transfer-encoding", "upgrade", "host", "content-length",
 }
 # Buyer-supplied headers we strip before reaching the seller's origin.
-_STRIP_INBOUND = {"x-payment", "authorization", "x-hub-secret"}
+_STRIP_INBOUND = {"payment-signature", "x-payment", "authorization", "x-hub-secret"}
 
 # MCP (JSON-RPC) methods that are protocol handshake / metadata, not billable
 # work. A hosted MCP server must answer these *before* a client can ever call a
@@ -73,6 +73,77 @@ def _is_free_mcp_request(raw_body: bytes) -> bool:
     if method.startswith("notifications/"):
         return True
     return method in _MCP_FREE_METHODS
+
+
+def _payment_header(headers) -> str | None:
+    return headers.get("payment-signature") or headers.get("x-payment")
+
+
+def _policy_response(status_code: int, error: str) -> JSONResponse:
+    return JSONResponse(status_code=status_code, content={"error": error})
+
+
+def _apply_request_policy(*, service: dict, path: str, method: str,
+                          body: bytes) -> tuple[bytes, JSONResponse | None]:
+    # Apply optional per-service constraints before charging the buyer.
+    raw_policy = service.get("request_policy_json")
+    if not raw_policy:
+        return body, None
+    try:
+        policy = _json.loads(raw_policy)
+    except (TypeError, ValueError):
+        log.error("invalid request policy for service %s", service.get("slug"))
+        return body, _policy_response(503, "service request policy is invalid")
+    if not isinstance(policy, dict):
+        return body, _policy_response(503, "service request policy is invalid")
+
+    allowed_methods = policy.get("allowed_methods")
+    if allowed_methods and method.upper() not in {str(x).upper() for x in allowed_methods}:
+        return body, _policy_response(405, "method not allowed for this service")
+    allowed_paths = policy.get("allowed_paths")
+    if allowed_paths and path not in {str(x).lstrip("/") for x in allowed_paths}:
+        return body, _policy_response(404, "resource not offered by this service")
+    max_bytes = policy.get("max_request_bytes")
+    if isinstance(max_bytes, int) and max_bytes > 0 and len(body) > max_bytes:
+        return body, _policy_response(413, "request body exceeds service limit")
+
+    needs_json = bool(policy.get("require_json") or policy.get("fixed_model")
+                      or policy.get("max_output_tokens") is not None
+                      or policy.get("allow_stream") is False)
+    if not needs_json:
+        return body, None
+    try:
+        payload = _json.loads(body)
+    except (TypeError, ValueError):
+        return body, _policy_response(400, "valid JSON body required")
+    if not isinstance(payload, dict):
+        return body, _policy_response(400, "JSON body must be an object")
+
+    fixed_model = policy.get("fixed_model")
+    requested_model = payload.get("model")
+    if fixed_model:
+        if requested_model not in (None, "", fixed_model):
+            return body, _policy_response(422, "this service only offers its fixed model")
+        payload["model"] = fixed_model
+    if policy.get("allow_stream") is False and payload.get("stream") is True:
+        return body, _policy_response(422, "streaming is not offered by this service")
+
+    max_output = policy.get("max_output_tokens")
+    if isinstance(max_output, int) and max_output > 0:
+        found = False
+        for field in ("max_tokens", "max_completion_tokens"):
+            value = payload.get(field)
+            if value is None:
+                continue
+            found = True
+            if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+                return body, _policy_response(422, f"{field} must be a positive integer")
+            if value > max_output:
+                return body, _policy_response(422, f"{field} exceeds service limit {max_output}")
+        if not found:
+            payload["max_tokens"] = max_output
+
+    return _json.dumps(payload, separators=(",", ":")).encode("utf-8"), None
 
 
 def _challenge_response(*, service: dict, requirements: dict, method: str,
@@ -112,6 +183,11 @@ async def gateway(slug: str, path: str, request: Request) -> Response:
         return JSONResponse(status_code=413,
                             content={"error": "request body too large"})
 
+    body, policy_error = _apply_request_policy(
+        service=service, path=path, method=request.method, body=body)
+    if policy_error is not None:
+        return policy_error
+
     # --- MCP-aware free pass: handshake / list methods are not billable. A
     # hosted MCP server must answer initialize + tools/list before any client
     # can call a tool, so charging for them would 402-block the connection.
@@ -132,17 +208,17 @@ async def gateway(slug: str, path: str, request: Request) -> Response:
 
     # --- payment gate (tools/call and any non-handshake request) ---
     payer: str | None = None
-    pay_header = request.headers.get("x-payment")
+    pay_header = _payment_header(request.headers)
     if not pay_header:
         return _challenge_response(service=service, requirements=requirements,
                                    method=request.method, resource_url=resource_url,
-                                   error="X-PAYMENT header is required")
+                                   error="PAYMENT-SIGNATURE header is required")
 
     payload = x402.decode_payment_header(pay_header)
     if payload is None:
         return _challenge_response(service=service, requirements=requirements,
                                    method=request.method, resource_url=resource_url,
-                                   error="malformed X-PAYMENT header")
+                                   error="malformed payment signature header")
 
     settle = await facilitator.settle(payment_payload=payload, payment_requirements=requirements)
     if not settle.get("success"):
@@ -224,5 +300,8 @@ async def _proxy_upstream(*, proxy, box, db, service, path, request, body,
     }
     if tx_hash:
         resp_headers["X-Payment-Tx"] = tx_hash
+        resp_headers["PAYMENT-RESPONSE"] = x402.encode_payment_response({
+            "success": True, "payer": payer, "transaction": tx_hash,
+        })
     return Response(content=content, status_code=upstream_resp.status_code,
                     headers=resp_headers, media_type=upstream_resp.headers.get("content-type"))
