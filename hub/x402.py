@@ -25,6 +25,8 @@ def build_requirements(*, service: dict, resource_url: str, network: str,
                        usdc_address: str) -> dict:
     """One v2 PaymentRequirements entry. MUST be byte-identical between the
     challenge and the /settle call (facilitator re-derives EIP-712 from it)."""
+    # Circle USDC uses "USD Coin" on Base mainnet but "USDC" on Base Sepolia.
+    token_name = "USD Coin" if network == "eip155:8453" else "USDC"
     return {
         "scheme": "exact",
         "network": network,
@@ -32,7 +34,7 @@ def build_requirements(*, service: dict, resource_url: str, network: str,
         "amount": usdc_atomic(service["price_usdc"]),
         "payTo": service["payout_address"],
         "maxTimeoutSeconds": 120,
-        "extra": {"name": "USDC", "version": "2"},
+        "extra": {"name": token_name, "version": "2"},
     }
 
 

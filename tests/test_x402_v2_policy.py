@@ -144,3 +144,16 @@ def test_public_service_view_hides_request_policy():
         "request_policy_json": _service()["request_policy_json"],
     })
     assert public == {"slug": "tianshu-deepseek-v4-flash"}
+
+
+def test_base_usdc_requirements_use_onchain_eip712_name():
+    requirements = x402.build_requirements(
+        service={
+            "price_usdc": 0.01,
+            "payout_address": "0x1111111111111111111111111111111111111111",
+        },
+        resource_url="https://example.com/paid",
+        network="eip155:8453",
+        usdc_address="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    )
+    assert requirements["extra"] == {"name": "USD Coin", "version": "2"}
