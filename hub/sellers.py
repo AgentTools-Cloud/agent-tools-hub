@@ -24,9 +24,8 @@ from pydantic import BaseModel, Field
 log = logging.getLogger(__name__)
 router = APIRouter()
 
-from .config import (FACILITATOR_PRESETS, SELECTABLE_FACILITATORS,
-                     facilitator_public, get_settings)
 from . import accounts, public_http, safety
+from .config import FACILITATOR_PRESETS, SELECTABLE_FACILITATORS, facilitator_public, get_settings
 
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$")
 _ADDR_RE = re.compile(r"^0x[a-fA-F0-9]{40}$")
@@ -34,7 +33,11 @@ _ADDR_RE = re.compile(r"^0x[a-fA-F0-9]{40}$")
 # fields we never expose publicly
 _SECRET_FIELDS = {"upstream_auth_enc", "proxy_secret", "upstream_auth_header"}
 # internal moderation fields stay out of public listings
-_PUBLIC_HIDDEN = _SECRET_FIELDS | {"request_policy_json", "review_note", "reviewed_at"}
+_PUBLIC_HIDDEN = _SECRET_FIELDS | {
+    "id", "seller_id", "upstream_base_url", "created_at",
+    "request_policy_json", "review_note", "reviewed_at",
+}
+
 
 
 class SubmitRequest(BaseModel):

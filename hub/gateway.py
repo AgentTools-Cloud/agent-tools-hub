@@ -11,14 +11,13 @@ The hub never holds funds; settlement is pass-through to the seller's payTo.
 
 from __future__ import annotations
 
+import json as _json
 import logging
 import time
 
 import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
-
-import json as _json
 
 from . import safety, x402
 
@@ -37,6 +36,8 @@ _HOP_BY_HOP = {
 }
 # Buyer-supplied headers we strip before reaching the seller's origin.
 _STRIP_INBOUND = {"payment-signature", "x-payment", "authorization", "x-hub-secret"}
+_SAFE_PUBLIC_RESPONSE_HEADERS = {"content-type", "cache-control", "retry-after"}
+
 
 # MCP (JSON-RPC) methods that are protocol handshake / metadata, not billable
 # work. A hosted MCP server must answer these *before* a client can ever call a
@@ -150,6 +151,42 @@ def _apply_request_policy(*, service: dict, path: str, method: str,
             payload["max_tokens"] = max_output
 
     return _json.dumps(payload, separators=(",", ":")).encode("utf-8"), None
+
+
+def _sanitize_upstream_response(*, service: dict, content: bytes,
+                                status_code: int) -> tuple[bytes, int, bool]:
+    try:
+        policy = _json.loads(service.get("request_policy_json") or "{}")
+    except (TypeError, ValueError):
+        policy = {}
+    if not isinstance(policy, dict) or not policy.get("sanitize_response"):
+        return content, status_code, False
+    if status_code >= 400:
+        body = {"error": "upstream request failed", "status": status_code}
+        return _json.dumps(body, separators=(",", ":")).encode(), status_code, True
+    try:
+        payload = _json.loads(content)
+    except (TypeError, ValueError):
+        body = {"error": "invalid upstream response"}
+        return _json.dumps(body, separators=(",", ":")).encode(), 502, True
+    if not isinstance(payload, dict):
+        body = {"error": "invalid upstream response"}
+        return _json.dumps(body, separators=(",", ":")).encode(), 502, True
+    allowed = {"id", "object", "created", "model", "choices", "usage"}
+    public = {key: value for key, value in payload.items() if key in allowed}
+    fixed_model = policy.get("fixed_model")
+    if isinstance(fixed_model, str) and fixed_model:
+        public["model"] = fixed_model
+    usage = public.get("usage")
+    if isinstance(usage, dict):
+        usage_fields = {
+            "prompt_tokens", "completion_tokens", "total_tokens",
+            "prompt_tokens_details", "completion_tokens_details",
+        }
+        public["usage"] = {
+            key: value for key, value in usage.items() if key in usage_fields
+        }
+    return _json.dumps(public, separators=(",", ":")).encode(), status_code, True
 
 
 def _challenge_response(*, service: dict, requirements: dict, method: str,
@@ -294,20 +331,25 @@ async def _proxy_upstream(*, proxy, box, db, service, path, request, body,
                      latency_ms=int((time.monotonic() - started) * 1000))
         return JSONResponse(status_code=502, content={"error": "upstream response too large"})
 
+    content, response_status, sanitized = _sanitize_upstream_response(
+        service=service, content=content, status_code=upstream_resp.status_code)
     latency_ms = int((time.monotonic() - started) * 1000)
     db.log_usage(service_id=service["id"], path=path, method=request.method,
-                 http_status=upstream_resp.status_code, paid=paid, payer=payer,
+                 http_status=response_status, paid=paid, payer=payer,
                  amount_atomic=amount_atomic, tx_hash=tx_hash,
                  latency_ms=latency_ms)
 
     resp_headers = {
         k: v for k, v in upstream_resp.headers.items()
         if k.lower() not in _HOP_BY_HOP
+        and (not sanitized or k.lower() in _SAFE_PUBLIC_RESPONSE_HEADERS)
     }
+
     if tx_hash:
         resp_headers["X-Payment-Tx"] = tx_hash
         resp_headers["PAYMENT-RESPONSE"] = x402.encode_payment_response({
             "success": True, "payer": payer, "transaction": tx_hash,
         })
-    return Response(content=content, status_code=upstream_resp.status_code,
-                    headers=resp_headers, media_type=upstream_resp.headers.get("content-type"))
+    media_type = "application/json" if sanitized else upstream_resp.headers.get("content-type")
+    return Response(content=content, status_code=response_status,
+                    headers=resp_headers, media_type=media_type)
