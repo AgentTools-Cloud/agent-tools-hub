@@ -237,7 +237,7 @@ fetch('/api/v1/services/'+encodeURIComponent(SLUG)+'/detail').then(function(r){
   var gw = PUBLIC + '/gw/' + s.slug + '/';
   var hd = s.health==='ok'?'<span class="dot ok"></span>live':(s.health==='down'?'<span class="dot down"></span>down':'<span class="dot unk"></span>unknown');
   var q = (s.quality_score!=null)?'<span class="qbadge">Quality '+esc(s.quality_score)+'/100</span>':'';
-  var curlSnippet = 'curl '+gw+'<path>            # 402 + price\\n# x402 client signs USDC, retries with X-PAYMENT -> 200';
+  var curlSnippet = 'curl '+gw+'<path>            # 402 + price\\n# x402 client signs USDC, retries with PAYMENT-SIGNATURE -> 200';
   var html =
     '<h2 style="margin-bottom:.2rem">'+esc(s.slug)+' '+q+'</h2>'
     +'<p class="sub">'+(s.description?esc(s.description):'')+'</p>'
@@ -470,7 +470,7 @@ _ABOUT = """
   <h2>How it works</h2>
   <p class="sub">A two-sided x402 marketplace. We never touch your money.</p>
   <pre class="block">buyer ──GET /gw/{slug}/path──▶ hub ──402 + price──▶ buyer
-buyer ──retry + X-PAYMENT────▶ hub ──settle──▶ facilitator ──USDC──▶ seller wallet
+buyer ──retry + PAYMENT-SIGNATURE────▶ hub ──settle──▶ facilitator ──USDC──▶ seller wallet
                                  └─ proxy ──▶ seller upstream (inject key + X-Hub-Secret)</pre>
   <div class="grid3">
     <div class="card"><h3>No platform cut</h3><p>Pass-through settlement: 100% of each payment goes to the

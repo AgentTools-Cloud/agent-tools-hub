@@ -13,7 +13,7 @@ of a normal upstream API and reverse-proxies paid requests through.
 
 ```
 buyer ──GET /gw/{slug}/path──▶ hub ──402 + price──▶ buyer
-buyer ──retry + X-PAYMENT────▶ hub ──/settle──▶ facilitator ──USDC──▶ seller payTo
+buyer ──retry + PAYMENT-SIGNATURE────▶ hub ──/settle──▶ facilitator ──USDC──▶ seller payTo
                                   └─ proxy ──▶ seller upstream (inject key + X-Hub-Secret)
 ```
 

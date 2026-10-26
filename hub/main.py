@@ -19,7 +19,7 @@ from .sellers import router as sellers_router
 
 # x402 payment headers that browser/fetch clients must be able to read.
 # (The $0 post-mortem: without exposing these, web agents silently drop the challenge.)
-_EXPOSE_HEADERS = "PAYMENT-REQUIRED, PAYMENT-RESPONSE, X-PAYMENT, X-Payment-Tx"
+_EXPOSE_HEADERS = "PAYMENT-REQUIRED, PAYMENT-RESPONSE, PAYMENT-SIGNATURE, X-PAYMENT, X-Payment-Tx"
 
 
 class PaymentCORSMiddleware(BaseHTTPMiddleware):
