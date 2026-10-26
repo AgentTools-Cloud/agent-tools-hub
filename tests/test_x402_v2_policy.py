@@ -15,7 +15,7 @@ def _service(**overrides):
             "allowed_paths": ["v1/chat/completions"],
             "require_json": True,
             "fixed_model": "deepseek-ai/DeepSeek-V4-Flash",
-            "max_request_bytes": 128 * 1024,
+            "max_request_bytes": 20 * 1024 * 1024,
             "max_output_tokens": 4096,
             "allow_stream": False,
         }),
@@ -157,3 +157,11 @@ def test_base_usdc_requirements_use_onchain_eip712_name():
         usdc_address="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     )
     assert requirements["extra"] == {"name": "USD Coin", "version": "2"}
+
+
+def test_policy_accepts_prompt_larger_than_old_limit():
+    prompt = "x" * (256 * 1024)
+    result, error = _apply({"messages": [{"role": "user", "content": prompt}]})
+    assert error is None
+    payload = json.loads(result)
+    assert payload["messages"][0]["content"] == prompt

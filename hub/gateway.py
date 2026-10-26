@@ -24,7 +24,7 @@ from . import safety, x402
 
 # Caps on what flows through the hop. A seller's own limits are their business;
 # what passes through us stays bounded so one upstream can't exhaust the hub.
-_MAX_REQUEST_BODY = 10 * 1024 * 1024    # 10 MiB inbound body
+_MAX_REQUEST_BODY = 20 * 1024 * 1024    # 20 MiB inbound body
 _MAX_RESPONSE_BODY = 25 * 1024 * 1024   # 25 MiB upstream response
 
 log = logging.getLogger(__name__)
