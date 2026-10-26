@@ -4,6 +4,7 @@ import json
 from hub import x402
 from hub.db import DB
 from hub.gateway import _apply_request_policy, _payment_header
+from hub.sellers import _public_view
 
 
 def _service(**overrides):
@@ -135,3 +136,11 @@ def test_db_persists_request_policy(tmp_path):
     )
     row = db.service_with_payout("tianshu-deepseek-v4-flash")
     assert row["request_policy_json"] == policy
+
+
+def test_public_service_view_hides_request_policy():
+    public = _public_view({
+        "slug": "tianshu-deepseek-v4-flash",
+        "request_policy_json": _service()["request_policy_json"],
+    })
+    assert public == {"slug": "tianshu-deepseek-v4-flash"}

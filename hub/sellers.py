@@ -34,7 +34,7 @@ _ADDR_RE = re.compile(r"^0x[a-fA-F0-9]{40}$")
 # fields we never expose publicly
 _SECRET_FIELDS = {"upstream_auth_enc", "proxy_secret", "upstream_auth_header"}
 # internal moderation fields stay out of public listings
-_PUBLIC_HIDDEN = _SECRET_FIELDS | {"review_note", "reviewed_at"}
+_PUBLIC_HIDDEN = _SECRET_FIELDS | {"request_policy_json", "review_note", "reviewed_at"}
 
 
 class SubmitRequest(BaseModel):
