@@ -22,6 +22,27 @@ class FacilitatorClient:
         # follow_redirects: some facilitators 308 bare-domain -> www on POST.
         self._client = httpx.AsyncClient(timeout=timeout, headers=headers, follow_redirects=True)
 
+    async def verify(self, *, payment_payload: dict, payment_requirements: dict) -> dict:
+        """POST /verify. Checks signature, balance and amount without moving funds."""
+        body = {
+            "x402Version": payment_payload.get("x402Version", 2),
+            "paymentPayload": payment_payload,
+            "paymentRequirements": payment_requirements,
+        }
+        try:
+            r = await self._client.post(f"{self._base}/verify", json=body)
+            r.raise_for_status()
+            return r.json()
+        except httpx.HTTPStatusError as e:
+            log.warning("facilitator /verify %s: %s", e.response.status_code, e.response.text[:200])
+            try:
+                return e.response.json()
+            except Exception:
+                return {"isValid": False, "invalidReason": f"facilitator_http_{e.response.status_code}"}
+        except httpx.HTTPError as e:
+            log.error("facilitator /verify transport error: %s", e)
+            return {"isValid": False, "invalidReason": "facilitator_unreachable"}
+
     async def settle(self, *, payment_payload: dict, payment_requirements: dict) -> dict:
         """POST /settle. Returns the facilitator's SettleResponse dict.
 
