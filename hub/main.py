@@ -9,6 +9,7 @@ import httpx
 from fastapi import FastAPI
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from .catalog import router as catalog_router
 from .config import get_settings
 from .crypto import SecretBox
 from .db import DB
@@ -75,6 +76,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.add_middleware(PaymentCORSMiddleware)
+app.include_router(catalog_router)
 app.include_router(landing_router)
 app.include_router(sellers_router)
 app.include_router(gateway_router)
