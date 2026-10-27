@@ -35,7 +35,12 @@ _HOP_BY_HOP = {
     "te", "trailers", "transfer-encoding", "upgrade", "host", "content-length",
 }
 # Buyer-supplied headers we strip before reaching the seller's origin.
-_STRIP_INBOUND = {"payment-signature", "x-payment", "authorization", "x-hub-secret"}
+_STRIP_INBOUND = {
+    "payment-signature", "x-payment", "authorization", "x-hub-secret",
+    # The hub rewrites JSON responses, so upstream encoding must be negotiated
+    # by httpx itself; forwarding Cloudflare's br can yield undecodable bytes.
+    "accept-encoding",
+}
 _SAFE_PUBLIC_RESPONSE_HEADERS = {"content-type", "cache-control", "retry-after"}
 
 

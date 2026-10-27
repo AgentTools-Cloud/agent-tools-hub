@@ -4,6 +4,7 @@ import json
 from hub import x402
 from hub.db import DB
 from hub.gateway import (
+    _STRIP_INBOUND,
     _apply_request_policy,
     _payment_header,
     _sanitize_upstream_response,
@@ -229,3 +230,7 @@ def test_response_policy_replaces_upstream_error_details():
     )
     assert status == 502 and sanitized is True
     assert json.loads(content) == {"error": "upstream request failed", "status": 502}
+
+
+def test_buyer_accept_encoding_is_not_forwarded_upstream():
+    assert "accept-encoding" in _STRIP_INBOUND
