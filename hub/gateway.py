@@ -89,6 +89,23 @@ def _policy_response(status_code: int, error: str) -> JSONResponse:
     return JSONResponse(status_code=status_code, content={"error": error})
 
 
+def _policy_field(service: dict, key: str) -> set[str]:
+    try:
+        policy = _json.loads(service.get("request_policy_json") or "{}")
+    except (TypeError, ValueError):
+        return set()
+    values = policy.get(key) if isinstance(policy, dict) else None
+    return set(values) if isinstance(values, list) else set()
+
+
+def _policy_allowed_methods(service: dict) -> set[str]:
+    return {str(x).upper() for x in _policy_field(service, "allowed_methods")}
+
+
+def _policy_allowed_paths(service: dict) -> set[str]:
+    return {str(x).lstrip("/") for x in _policy_field(service, "allowed_paths")}
+
+
 def _apply_request_policy(*, service: dict, path: str, method: str,
                           body: bytes) -> tuple[bytes, JSONResponse | None]:
     # Apply optional per-service constraints before charging the buyer.
@@ -231,10 +248,23 @@ async def gateway(slug: str, path: str, request: Request) -> Response:
         return JSONResponse(status_code=413,
                             content={"error": "request body too large"})
 
-    body, policy_error = _apply_request_policy(
-        service=service, path=path, method=request.method, body=body)
-    if policy_error is not None:
-        return policy_error
+    challenge_method = request.method
+    allowed = _policy_allowed_methods(service)
+    if (request.method in ("GET", "HEAD") and allowed
+            and request.method not in allowed
+            and not _payment_header(request.headers)):
+        # Health checkers and indexers probe with GET/HEAD; answer with the
+        # payment challenge advertising the method the service accepts.
+        challenge_method = "POST" if "POST" in allowed else sorted(allowed)[0]
+        allowed_paths = _policy_allowed_paths(service)
+        if allowed_paths and path not in allowed_paths:
+            return _policy_response(404, "resource not offered by this service")
+        body = b""
+    else:
+        body, policy_error = _apply_request_policy(
+            service=service, path=path, method=request.method, body=body)
+        if policy_error is not None:
+            return policy_error
 
     # --- MCP-aware free pass: handshake / list methods are not billable. A
     # hosted MCP server must answer initialize + tools/list before any client
@@ -259,7 +289,7 @@ async def gateway(slug: str, path: str, request: Request) -> Response:
     pay_header = _payment_header(request.headers)
     if not pay_header:
         return _challenge_response(service=service, requirements=requirements,
-                                   method=request.method, resource_url=resource_url,
+                                   method=challenge_method, resource_url=resource_url,
                                    error="PAYMENT-SIGNATURE header is required")
 
     payload = x402.decode_payment_header(pay_header)

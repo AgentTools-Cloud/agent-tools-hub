@@ -102,6 +102,14 @@ def test_policy_rejects_streaming_and_oversized_output():
     assert "4096" in _error(limit_error)
 
 
+def test_policy_helpers_read_methods_and_paths():
+    from hub.gateway import _policy_allowed_methods, _policy_allowed_paths
+    assert _policy_allowed_methods(_service()) == {"POST"}
+    assert _policy_allowed_paths(_service()) == {"v1/chat/completions"}
+    assert _policy_allowed_methods(_service(request_policy_json=None)) == set()
+    assert _policy_allowed_methods(_service(request_policy_json="{bad")) == set()
+
+
 def test_policy_rejects_wrong_route_and_large_body():
     _, method_error = _apply({}, method="GET")
     assert method_error.status_code == 405
