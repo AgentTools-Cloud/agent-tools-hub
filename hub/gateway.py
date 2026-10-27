@@ -298,27 +298,63 @@ async def gateway(slug: str, path: str, request: Request) -> Response:
                                    method=request.method, resource_url=resource_url,
                                    error="malformed payment signature header")
 
-    settle = await facilitator.settle(payment_payload=payload, payment_requirements=requirements)
-    if not settle.get("success"):
+    # Verify first, serve, and settle only when the upstream succeeded, so a
+    # failed call never charges the buyer. The signed authorization is single-
+    # use on-chain; the claim stops concurrent requests reusing it meanwhile.
+    verify = await facilitator.verify(payment_payload=payload, payment_requirements=requirements)
+    if not verify.get("isValid"):
         return _challenge_response(
             service=service, requirements=requirements, method=request.method,
             resource_url=resource_url,
-            error=f"payment not settled: {settle.get('errorReason') or 'unknown'}",
+            error=f"payment not valid: {verify.get('invalidReason') or 'unknown'}",
         )
-    payer = settle.get("payer")
-    tx_hash = settle.get("transaction")
+    claim_key = _authorization_key(payload, verify.get("payer"))
+    if not claim_key or not db.claim_payment(claim_key, service["id"]):
+        return _challenge_response(
+            service=service, requirements=requirements, method=request.method,
+            resource_url=resource_url,
+            error="payment authorization already in use",
+        )
 
-    return await _proxy_upstream(
-        proxy=proxy, box=box, db=db, service=service, path=path,
-        request=request, body=body, payer=payer, tx_hash=tx_hash,
-        amount_atomic=requirements["amount"], paid=True)
+    async def settle_payment():
+        result = await facilitator.settle(payment_payload=payload,
+                                          payment_requirements=requirements)
+        db.finish_payment_claim(claim_key, bool(result.get("success")))
+        return result
+
+    try:
+        return await _proxy_upstream(
+            proxy=proxy, box=box, db=db, service=service, path=path,
+            request=request, body=body, payer=verify.get("payer"), tx_hash=None,
+            amount_atomic=requirements["amount"], paid=True,
+            settle=settle_payment,
+            upstream_timeout=_paid_upstream_timeout(requirements))
+    finally:
+        # No-op once settled; frees the authorization when we never charged.
+        db.finish_payment_claim(claim_key, False)
+
+
+def _authorization_key(payload: dict, payer: str | None) -> str | None:
+    auth = ((payload or {}).get("payload") or {}).get("authorization") or {}
+    nonce = auth.get("nonce")
+    owner = auth.get("from") or payer
+    if not nonce or not owner:
+        return None
+    return f"{str(owner).lower()}:{str(nonce).lower()}"
+
+
+def _paid_upstream_timeout(requirements: dict) -> float:
+    # Leave room inside the authorization's validity window to settle afterwards.
+    window = int(requirements.get("maxTimeoutSeconds") or 120)
+    return float(max(10, min(window - 30, 300)))
 
 
 async def _proxy_upstream(*, proxy, box, db, service, path, request, body,
-                          payer, tx_hash, amount_atomic, paid):
+                          payer, tx_hash, amount_atomic, paid,
+                          settle=None, upstream_timeout: float | None = None):
     """Forward the (already-read) request to the seller's upstream and relay the
-    response. Shared by the free-handshake path and the paid path; `paid`/amount
-    only affect the usage log."""
+    response. With `settle`, payment is captured only after a 2xx upstream
+    response; on any failure the buyer is not charged."""
     started = time.monotonic()
     upstream_url = f"{service['upstream_base_url'].rstrip('/')}/{path}"
     fwd_headers = {
@@ -338,21 +374,26 @@ async def _proxy_upstream(*, proxy, box, db, service, path, request, body,
     if _reason:
         log.warning("blocked upstream %s: %s", upstream_url, _reason)
         db.log_usage(service_id=service["id"], path=path, method=request.method,
-                     http_status=502, paid=paid, payer=payer,
-                     amount_atomic=amount_atomic, tx_hash=tx_hash,
+                     http_status=502, paid=False, payer=payer,
+                     amount_atomic="0", tx_hash=None,
                      latency_ms=int((time.monotonic() - started) * 1000))
         return JSONResponse(status_code=502, content={"error": "upstream blocked"})
 
+    request_kwargs = {}
+    if upstream_timeout is not None:
+        request_kwargs["timeout"] = httpx.Timeout(
+            connect=8.0, read=upstream_timeout, write=60.0, pool=8.0)
     try:
         upstream_resp = await proxy.request(
             request.method, upstream_url,
             params=dict(request.query_params), headers=fwd_headers, content=body,
+            **request_kwargs,
         )
     except httpx.HTTPError as e:
         log.error("upstream proxy error for %s: %s", upstream_url, e)
         db.log_usage(service_id=service["id"], path=path, method=request.method,
-                     http_status=502, paid=paid, payer=payer,
-                     amount_atomic=amount_atomic, tx_hash=tx_hash,
+                     http_status=502, paid=False if settle else paid, payer=payer,
+                     amount_atomic="0" if settle else amount_atomic, tx_hash=tx_hash,
                      latency_ms=int((time.monotonic() - started) * 1000))
         return JSONResponse(status_code=502, content={"error": "upstream unreachable"})
 
@@ -361,13 +402,29 @@ async def _proxy_upstream(*, proxy, box, db, service, path, request, body,
     if len(content) > _MAX_RESPONSE_BODY:
         log.warning("upstream %s response too large: %d bytes", upstream_url, len(content))
         db.log_usage(service_id=service["id"], path=path, method=request.method,
-                     http_status=502, paid=paid, payer=payer,
-                     amount_atomic=amount_atomic, tx_hash=tx_hash,
+                     http_status=502, paid=False if settle else paid, payer=payer,
+                     amount_atomic="0" if settle else amount_atomic, tx_hash=tx_hash,
                      latency_ms=int((time.monotonic() - started) * 1000))
         return JSONResponse(status_code=502, content={"error": "upstream response too large"})
 
     content, response_status, sanitized = _sanitize_upstream_response(
         service=service, content=content, status_code=upstream_resp.status_code)
+    if settle is not None:
+        if 200 <= response_status < 300:
+            result = await settle()
+            if not result.get("success"):
+                log.warning("settle after upstream success failed for %s: %s",
+                            service["slug"], result.get("errorReason"))
+                db.log_usage(service_id=service["id"], path=path, method=request.method,
+                             http_status=402, paid=False, payer=payer, amount_atomic="0",
+                             tx_hash=None,
+                             latency_ms=int((time.monotonic() - started) * 1000))
+                return JSONResponse(status_code=402, content={
+                    "error": f"payment not settled: {result.get('errorReason') or 'unknown'}"})
+            payer = result.get("payer") or payer
+            tx_hash = result.get("transaction")
+        else:
+            paid, amount_atomic = False, "0"
     latency_ms = int((time.monotonic() - started) * 1000)
     db.log_usage(service_id=service["id"], path=path, method=request.method,
                  http_status=response_status, paid=paid, payer=payer,

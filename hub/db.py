@@ -61,6 +61,13 @@ CREATE TABLE IF NOT EXISTS usage_log (
 CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage_log(ts);
 CREATE INDEX IF NOT EXISTS idx_usage_service ON usage_log(service_id);
 
+CREATE TABLE IF NOT EXISTS payment_claims (
+    authorization_key TEXT PRIMARY KEY,   -- payer:nonce of the signed authorization
+    service_id        INTEGER NOT NULL,
+    claimed_at        INTEGER NOT NULL,
+    state             TEXT NOT NULL      -- pending|settled
+);
+
 CREATE TABLE IF NOT EXISTS needs (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at    INTEGER NOT NULL,
@@ -240,6 +247,27 @@ class DB:
             return cur.fetchall()
 
     # --- usage ---
+    def claim_payment(self, key: str, service_id: int, stale_after: int = 900) -> bool:
+        """Reserve one signed authorization so it cannot be served twice concurrently."""
+        now = int(time.time())
+        with self._lock:
+            self._conn.execute(
+                "DELETE FROM payment_claims WHERE state='pending' AND claimed_at<?",
+                (now - stale_after,))
+            cur = self._conn.execute(
+                "INSERT OR IGNORE INTO payment_claims(authorization_key,service_id,claimed_at,state) "
+                "VALUES (?,?,?,'pending')", (key, service_id, now))
+            return cur.rowcount == 1
+
+    def finish_payment_claim(self, key: str, settled: bool) -> None:
+        with self._lock:
+            if settled:
+                self._conn.execute(
+                    "UPDATE payment_claims SET state='settled' WHERE authorization_key=?", (key,))
+            else:
+                self._conn.execute(
+                    "DELETE FROM payment_claims WHERE authorization_key=? AND state='pending'", (key,))
+
     def log_usage(self, *, service_id: int, path: str, method: str, http_status: int,
                   paid: bool, payer: str | None, amount_atomic: str | None,
                   tx_hash: str | None, latency_ms: int | None) -> None:
