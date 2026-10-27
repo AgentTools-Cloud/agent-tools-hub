@@ -6,11 +6,14 @@ from the JSON API. User-supplied text is HTML-escaped in JS to avoid stored XSS.
 
 from __future__ import annotations
 
+import json
 import re
+import time
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from . import catalog
 from .config import SELECTABLE_FACILITATORS, facilitator_public, get_settings
 
 router = APIRouter()
@@ -469,9 +472,14 @@ _ABOUT = """
 <section class="page"><div class="wrap">
   <h2>How it works</h2>
   <p class="sub">A two-sided x402 marketplace. We never touch your money.</p>
-  <pre class="block">buyer ──GET /gw/{slug}/path──▶ hub ──402 + price──▶ buyer
-buyer ──retry + PAYMENT-SIGNATURE────▶ hub ──settle──▶ facilitator ──USDC──▶ seller wallet
-                                 └─ proxy ──▶ seller upstream (inject key + X-Hub-Secret)</pre>
+  <pre class="block">1. buyer ──POST /gw/{slug}/path──────────▶ hub ──402 + PAYMENT-REQUIRED──▶ buyer
+2. buyer ──retry + PAYMENT-SIGNATURE────▶ hub ──verify──▶ facilitator
+3.                                        hub ──proxy──▶ seller upstream (inject key + X-Hub-Secret)
+4. upstream 2xx → hub ──settle──▶ facilitator ──USDC──▶ seller wallet → response + PAYMENT-RESPONSE
+   upstream error / timeout → nothing is settled, the buyer pays nothing</pre>
+  <p class="muted">Machine-readable catalog: <a href="/.well-known/x402">/.well-known/x402</a> ·
+    <a href="/llms.txt">/llms.txt</a> · <a href="/v1/models">/v1/models</a> ·
+    <a href="/api/v1/services">/api/v1/services</a></p>
   <div class="grid3">
     <div class="card"><h3>No platform cut</h3><p>Pass-through settlement: 100% of each payment goes to the
       seller's wallet. We don't custody funds.</p></div>
@@ -517,12 +525,133 @@ async def services_page(request: Request) -> HTMLResponse:
     return _render("services", _SERVICES, _SERVICES_JS, _public(request))
 
 
+def _fmt_ts(ts) -> str:
+    if not ts:
+        return "—"
+    return time.strftime("%Y-%m-%d %H:%M", time.gmtime(int(ts)))
+
+
+def _node_snippet(url: str, body: dict) -> str:
+    return (
+        "// npm i @x402/fetch @x402/core @x402/evm viem\n"
+        'import { x402Client } from "@x402/core/client";\n'
+        'import { ExactEvmScheme } from "@x402/evm/exact/client";\n'
+        'import { wrapFetchWithPayment } from "@x402/fetch";\n'
+        'import { privateKeyToAccount } from "viem/accounts";\n\n'
+        "const client = new x402Client();\n"
+        'client.register("eip155:*", new ExactEvmScheme(privateKeyToAccount(process.env.BUYER_KEY)));\n'
+        "const paidFetch = wrapFetchWithPayment(fetch, client);\n\n"
+        f'const res = await paidFetch("{url}", {{\n'
+        '  method: "POST",\n'
+        '  headers: { "Content-Type": "application/json" },\n'
+        f"  body: JSON.stringify({json.dumps(body)}),\n"
+        "});\n"
+        "console.log(res.status, await res.json());"
+    )
+
+
+def _python_snippet(url: str, body: dict) -> str:
+    return (
+        "# pip install 'x402[httpx,evm]' eth-account\n"
+        "import asyncio, os\n"
+        "from eth_account import Account\n"
+        "from x402 import x402Client\n"
+        "from x402.http.clients import x402HttpxClient\n"
+        "from x402.mechanisms.evm import EthAccountSigner\n"
+        "from x402.mechanisms.evm.exact import ExactEvmScheme\n\n"
+        "async def main():\n"
+        "    payer = x402Client()\n"
+        '    payer.register("eip155:*", ExactEvmScheme(\n'
+        '        signer=EthAccountSigner(Account.from_key(os.environ["BUYER_KEY"]))))\n'
+        "    async with x402HttpxClient(payer, timeout=120) as client:\n"
+        f'        r = await client.post("{url}",\n'
+        f"                              json={json.dumps(body)})\n"
+        "        print(r.status_code, r.json())\n\n"
+        "asyncio.run(main())"
+    )
+
+
 @router.get("/services/{slug}", response_class=HTMLResponse)
 async def service_detail_page(slug: str, request: Request) -> HTMLResponse:
-    # slug is echoed into a JS string literal; allow only safe chars to prevent injection.
-    safe = re.sub(r"[^a-zA-Z0-9_-]", "", slug)[:48]
-    script = _DETAIL_JS.replace("__SLUG__", safe)
-    return _render("services", _DETAIL, script, _public(request))
+    db = request.app.state.db
+    public = _public(request)
+    svc = db.service_with_payout(slug)
+    if svc is None or svc["status"] != "live":
+        body = ('<section class="page"><div class="wrap"><div class="empty">Service not found or not live. '
+                '<a href="/services">Browse all</a></div></div></section>')
+        resp = _render("services", body, "", public)
+        resp.status_code = 404
+        return resp
+    st = db.service_stats(svc["id"])
+    pays = db.recent_payments(svc["id"])
+    url = catalog.gateway_url(public, svc)
+    method = catalog.call_method(svc)
+    lim = catalog.limits(svc)
+    net, _usdc = catalog.network_for(request, svc)
+    explorer = "https://basescan.org/tx/" if net == "eip155:8453" else "https://sepolia.basescan.org/tx/"
+    example = catalog.request_example(svc) or {}
+    health = svc.get("health")
+    hd = ('<span class="dot ok"></span>live' if health == "ok" else
+          '<span class="dot down"></span>down' if health == "down" else
+          '<span class="dot unk"></span>unknown')
+
+    rows = [("Endpoint", '<code>%s %s</code>' % (method, _esc_py(url))),
+            ("Price", '<b class="price">$%s</b> USDC per call · %s' % (svc["price_usdc"], _esc_py(net))),
+            ("Billing", "Charged only when the upstream returns 2xx. Errors and timeouts are free.")]
+    if lim.get("model"):
+        rows.append(("Model", "<code>%s</code> — the only model served; <code>model</code> may be omitted"
+                     % _esc_py(lim["model"])))
+    if lim.get("stream") is False:
+        rows.append(("Streaming", "Not supported — omit <code>stream</code> or set it to false"))
+    if lim.get("max_output_tokens"):
+        rows.append(("max_tokens", "Up to %d (default %d)" % (lim["max_output_tokens"], lim["max_output_tokens"])))
+    rows.append(("Machine-readable", '<a href="/.well-known/x402">/.well-known/x402</a> · '
+                 '<a href="/llms.txt">/llms.txt</a> · <a href="/v1/models">/v1/models</a>'))
+    kv = "".join("<tr><td>%s</td><td>%s</td></tr>" % r for r in rows)
+
+    curl = ("curl -i -X %s %s \\\n  -H 'Content-Type: application/json' \\\n  -d '%s'\n"
+            "# -> 402 + PAYMENT-REQUIRED header (base64 JSON: price, payTo, network)\n"
+            "# an x402 client signs it and retries with PAYMENT-SIGNATURE -> 200"
+            % (method, url, json.dumps(example, separators=(",", ":"))))
+    if pays:
+        pay_html = '<div class="list">' + "".join(
+            '<div class="item"><div>%s · <span class="muted">%s /%s</span></div><div class="price">%s</div></div>'
+            % (_fmt_ts(p["ts"]), _esc_py(p.get("method") or ""), _esc_py(p.get("path") or ""),
+               ('<a target="_blank" rel="noopener" href="%s%s">tx</a>' % (explorer, _esc_py(p["tx_hash"])))
+               if p.get("tx_hash") else "—")
+            for p in pays) + "</div>"
+    else:
+        pay_html = '<div class="empty">No paid calls yet.</div>'
+    q = ('<span class="qbadge">Quality %s/100</span>' % _esc_py(str(svc["quality_score"]))
+         if svc.get("quality_score") is not None else "")
+    body = (
+        '<section class="page"><div class="wrap">'
+        '<p style="margin:0 0 .6rem"><a href="/services">&larr; All services</a></p>'
+        '<h2 style="margin-bottom:.2rem">%s %s</h2>' % (_esc_py(svc["slug"]), q)
+        + '<p class="sub">%s</p>' % _esc_py(svc.get("description") or "")
+        + '<div class="muted" style="margin-bottom:.4rem">%s · category: %s</div>'
+        % (hd, _esc_py(svc.get("category") or "—"))
+        + '<div class="kpis">'
+        + '<div class="kpi"><div class="v">%s</div><div class="l">paid calls</div></div>' % st["paid_total"]
+        + '<div class="kpi"><div class="v">%s</div><div class="l">paid · 24h</div></div>' % st["paid_24h"]
+        + '<div class="kpi"><div class="v">%s</div><div class="l">total calls</div></div>' % st["calls_total"]
+        + '<div class="kpi"><div class="v">%s</div><div class="l">last call (UTC)</div></div>'
+        % _fmt_ts(st["last_call_ts"])
+        + "</div>"
+        + '<h3>Usage</h3><table class="kv">' + kv + "</table>"
+        + "<h3>1. See the price (no wallet needed)</h3>"
+        + '<pre class="block">%s</pre>' % _esc_py(curl)
+        + "<h3>2. Pay and call — Node.js</h3>"
+        + '<pre class="block">%s</pre>' % _esc_py(_node_snippet(url, example))
+        + "<h3>2. Pay and call — Python</h3>"
+        + '<pre class="block">%s</pre>' % _esc_py(_python_snippet(url, example))
+        + '<p class="muted">The buyer wallet needs USDC on %s; the facilitator sponsors gas. '
+          "The settlement tx comes back in the <code>PAYMENT-RESPONSE</code> and "
+          "<code>X-Payment-Tx</code> headers.</p>" % _esc_py(net)
+        + "<h3>Recent payments</h3>" + pay_html
+        + "</div></section>"
+    )
+    return _render("services", body, "", public)
 
 
 @router.get("/requests", response_class=HTMLResponse)

@@ -39,21 +39,29 @@ def build_requirements(*, service: dict, resource_url: str, network: str,
 
 
 def _bazaar(service: dict, method: str) -> dict:
-    """Minimal bazaar hint so agent SDKs don't have to guess the call shape."""
-    return {
-        "bazaar": {
-            "info": {
-                "method": method,
-                "path": f"/gw/{service['slug']}/...",
-                "note": "Proxied upstream; append the upstream path after the slug.",
-            },
-            "schema": {
-                "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "type": "object",
-                "description": service.get("description") or "Wrapped upstream API.",
-            },
-        }
+    """Bazaar discovery hint: call shape, input schema and examples, derived
+    from the same request policy the gateway enforces."""
+    from . import catalog  # local import: catalog imports this module
+
+    path = catalog.call_path(service)
+    info: dict = {
+        "method": method,
+        "path": f"/gw/{service['slug']}/{path}" if path else f"/gw/{service['slug']}/...",
+        "note": ("Charged only when the upstream call succeeds (2xx)." if path else
+                 "Proxied upstream; append the upstream path after the slug."),
     }
+    lim = catalog.limits(service)
+    if lim:
+        info["limits"] = lim
+    example = catalog.request_example(service)
+    if example:
+        info["input"] = {"type": "http", "method": method,
+                         "bodyType": "json", "body": example}
+        info["output"] = {"type": "json", "example": catalog.response_example(service)}
+    schema = {"$schema": "https://json-schema.org/draft/2020-12/schema"}
+    schema.update(catalog.request_schema(service))
+    schema.setdefault("description", service.get("description") or "Wrapped upstream API.")
+    return {"bazaar": {"info": info, "schema": schema}}
 
 
 def build_challenge(*, requirements: dict, service: dict, method: str,
