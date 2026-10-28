@@ -2,9 +2,11 @@
 
 Flow for ANY /gw/{slug}/{path}:
   1. no payment signature -> 402 + challenge (payTo = seller, price, USDC/Base, bazaar)
-  2. with PAYMENT-SIGNATURE (or legacy X-PAYMENT) -> facilitator /settle
-  3. settled       -> proxy to upstream, inject seller's upstream key + X-Hub-Secret
+  2. with PAYMENT-SIGNATURE (or legacy X-PAYMENT) -> facilitator /verify, then
+     claim the authorization so it cannot be served twice concurrently
+  3. verified      -> proxy to upstream, inject seller's upstream key + X-Hub-Secret
                       (anti-freeload: seller's origin verifies the secret)
+  4. upstream 2xx  -> facilitator /settle; any upstream failure settles nothing
 
 The hub never holds funds; settlement is pass-through to the seller's payTo.
 """
