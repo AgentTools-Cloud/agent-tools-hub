@@ -12,10 +12,19 @@ of a normal upstream API and reverse-proxies paid requests through.
 ## How it works
 
 ```
-buyer ──GET /gw/{slug}/path──▶ hub ──402 + price──▶ buyer
-buyer ──retry + PAYMENT-SIGNATURE────▶ hub ──/settle──▶ facilitator ──USDC──▶ seller payTo
-                                  └─ proxy ──▶ seller upstream (inject key + X-Hub-Secret)
+1. buyer ──POST /gw/{slug}/path──────────▶ hub ──402 + PAYMENT-REQUIRED──▶ buyer
+2. buyer ──retry + PAYMENT-SIGNATURE────▶ hub ──/verify──▶ facilitator
+3.                                        hub ──proxy──▶ seller upstream (inject key + X-Hub-Secret)
+4. upstream 2xx → hub ──/settle──▶ facilitator ──USDC──▶ seller payTo → response + PAYMENT-RESPONSE
+   upstream error / timeout → nothing is settled; the buyer pays nothing
 ```
+
+- **Charged only on success**: the payment is verified first, the upstream is
+  called, and settlement happens only after a 2xx. A `payment_claims` row stops
+  concurrent reuse of one signed authorization; a failed settle returns `402`.
+- **Probe-friendly**: on POST-only services an unpaid `GET`/`HEAD` also answers
+  the `402` challenge (advertising `POST`), so health checkers see a live x402
+  resource; a paid `GET` is still refused.
 
 - **Per-call x402** (like proxy402 / MCPay). Subscriptions are a later add-on.
 - **Pass-through**: `payTo` is the seller's own address; the hub never holds funds.
@@ -113,7 +122,12 @@ Buyers then point any x402 client at `https://hub.agent-tools.cloud/gw/my-api/..
 | `GET`  | `/api/v1/services/{slug}` | none | one live service (no secrets) |
 | `POST` | `/api/v1/needs` | account | post a demand ("I need an API that…") |
 | `GET`  | `/api/v1/needs` | none | browse open needs (contact hidden) |
+| `GET`  | `/api/v1/services/{slug}/detail` | none | service + usage stats + recent payments |
 | `ANY`  | `/gw/{slug}/{path}` | x402 | the paywalled reverse proxy |
+| `GET`  | `/.well-known/x402` (`.json`) | none | x402 discovery: live resources, method, `probe_body`, price/payTo, input schema + example |
+| `GET`  | `/llms.txt` | none | plain-text calling guide for LLM agents |
+| `GET`  | `/v1/models` | none | OpenAI-style list of fixed models sold, with endpoint + price |
+| `GET`  | `/services/{slug}` | none | server-rendered docs: limits, curl / Node / Python examples |
 | `GET`  | `/healthz` · `/stats` | none | ops |
 
 `account` = an agent-tools.cloud sign-in: the `atc_hub` cookie set by
@@ -128,11 +142,12 @@ follow redirects.
 hub/
 ├── main.py          FastAPI wiring + payment-header CORS middleware
 ├── config.py        pydantic-settings (.env)
-├── db.py            SQLite: sellers / services / usage_log
+├── db.py            SQLite: sellers / services / usage_log / payment_claims
 ├── crypto.py        Fernet encryption of sellers' upstream keys
 ├── facilitator.py   HTTP client for /verify + /settle
-├── x402.py          402 challenge builder (+ extensions.bazaar)
-├── gateway.py       per-call x402 reverse proxy
+├── x402.py          402 challenge builder (+ extensions.bazaar: path, limits, schema, examples)
+├── catalog.py       /.well-known/x402, /llms.txt, /v1/models (from live services + request policy)
+├── gateway.py       per-call x402 reverse proxy (verify → upstream → settle on 2xx)
 ├── accounts.py      agent-tools.cloud identity (read-only main-site DB)
 ├── safety.py        upstream host checks (no private / metadata targets)
 ├── public_http.py   public-IP-pinned client for seller-URL probes
