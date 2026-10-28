@@ -1,5 +1,7 @@
 # agent-tools-hub
 
+> **Status (2026-10-28): the hosted instance at hub.agent-tools.cloud is offline for maintenance until further notice.** The code remains available for self-hosting.
+
 Free [x402](https://x402.org) hosting hub — wrap **any** API into a pay-per-call
 x402 endpoint without writing a line of web3. Pass-through, **no platform cut**:
 USDC settles straight to the seller's wallet. Apache-2.0.
