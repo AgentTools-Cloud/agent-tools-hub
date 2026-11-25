@@ -7,8 +7,8 @@ x402 endpoint without writing a line of web3. Pass-through, **no platform cut**:
 USDC settles straight to the seller's wallet. Apache-2.0.
 
 Companion to [agent-tools.cloud](https://agent-tools.cloud) (discovery, never
-touches funds) and the [facilitator](https://facilitator.agent-tools.cloud)
-(verify/settle). This repo is the **gateway**: it puts an x402 paywall in front
+touches funds) and the [facilitator](https://github.com/AgentTools-Cloud/facilitator)
+(verify/settle; self-hosted only, there is no hosted instance). This repo is the **gateway**: it puts an x402 paywall in front
 of a normal upstream API and reverse-proxies paid requests through.
 
 ## How it works
